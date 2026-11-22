@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Settings, Search, Send, MoreVertical, Image, Smile, ArrowLeft, PenLine } from 'lucide-react'
 import { useStore } from '../store/useStore'
-import { API_URL, getApiToken } from '../lib/api'
+import { API_URL, api, getApiToken } from '../lib/api'
 import Avatar from '../components/Avatar'
 import { cn } from '../lib/utils'
 import { format } from 'date-fns'
@@ -58,7 +58,7 @@ const MessageBubble = ({ message, isMe }) => (
       <p className="text-[15px]">{message.text}</p>
     </div>
     <span className="text-secondary text-xs mt-1 px-1">
-      {format(new Date(message.timestamp), 'HH:mm')}
+      {format(new Date(message.timestamp), 'HH:mm')}{isMe && <span className="ml-2 text-[#5de4ca]">{message.readAt ? 'Прочитано' : 'Доставлено'}</span>}
     </span>
   </div>
 )
@@ -92,6 +92,7 @@ export default function Messages() {
 
   React.useEffect(() => {
     if (!selectedConvId || !getApiToken()) return undefined
+    api(`/api/chats/${selectedConvId}/read`, { method: 'POST' }).catch(() => {})
     const socket = new WebSocket(`${API_URL.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(getApiToken())}`)
     socket.onopen = () => socket.send(JSON.stringify({ type: 'chat:join', chatId: selectedConvId }))
     socket.onmessage = (event) => { try { const payload = JSON.parse(event.data); if (payload.type === 'message:new') receiveMessage(payload.message) } catch (error) { void error } }
