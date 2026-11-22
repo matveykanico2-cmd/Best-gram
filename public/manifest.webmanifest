@@ -1,0 +1,11 @@
+{
+  "name": "best-gram",
+  "short_name": "best-gram",
+  "description": "Публикации, истории и чаты best-gram",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06121f",
+  "theme_color": "#06121f",
+  "lang": "ru",
+  "icons": [{ "src": "/best-gram-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
