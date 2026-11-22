@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Settings, Search, Send, MoreVertical, Image, Smile, ArrowLeft, PenLine } from 'lucide-react'
+import { Settings, Search, Send, MoreVertical, Smile, ArrowLeft, PenLine, Paperclip, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { API_URL, api, getApiToken } from '../lib/api'
 import Avatar from '../components/Avatar'
@@ -55,7 +55,10 @@ const MessageBubble = ({ message, isMe }) => (
       "max-w-[85%] px-4 py-3 rounded-2xl",
       isMe ? "bg-primary text-white rounded-br-none" : "bg-[#2f3336] text-white rounded-bl-none"
     )}>
-      <p className="text-[15px]">{message.text}</p>
+      {message.mediaUrl && message.mediaType === 'image' && <img src={message.mediaUrl} alt={message.mediaName || 'Изображение'} className="mb-2 max-h-72 max-w-full rounded-xl object-contain" />}
+      {message.mediaUrl && message.mediaType === 'video' && <video src={message.mediaUrl} controls className="mb-2 max-h-72 max-w-full rounded-xl" />}
+      {message.mediaUrl && message.mediaType === 'audio' && <audio src={message.mediaUrl} controls className="mb-2 max-w-full" />}
+      {message.text && <p className="whitespace-pre-wrap break-words text-[15px]">{message.text}</p>}
     </div>
     <span className="text-secondary text-xs mt-1 px-1">
       {format(new Date(message.timestamp), 'HH:mm')}{isMe && <span className="ml-2 text-[#5de4ca]">{message.readAt ? 'Прочитано' : 'Доставлено'}</span>}
@@ -71,6 +74,8 @@ export default function Messages() {
   const [searchQuery, setSearchQuery] = useState('')
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [wallpaper, setWallpaper] = useState('aurora')
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [mediaDraft, setMediaDraft] = useState(null)
 
   const activeConv = conversations.find(c => c.id === selectedConvId)
   const participant = users.find(u => u.id === activeConv?.participantId)
@@ -79,6 +84,19 @@ export default function Messages() {
   const messagesEndRef = React.useRef(null)
   const scrollContainerRef = React.useRef(null)
   const searchInputRef = React.useRef(null)
+  const mediaInputRef = React.useRef(null)
+
+  const handleMedia = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 6 * 1024 * 1024) return window.alert('Файл должен быть не больше 6 МБ')
+    const mediaType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : null
+    if (!mediaType) return window.alert('Поддерживаются фото, видео и аудио')
+    const reader = new FileReader()
+    reader.onload = () => setMediaDraft({ mediaType, mediaUrl: String(reader.result || ''), mediaName: file.name })
+    reader.readAsDataURL(file)
+  }
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -187,15 +205,18 @@ export default function Messages() {
                <div ref={messagesEndRef} />
             </div>
 
-            <div className="chat-composer min-w-0 p-2 border-t border-border flex items-center gap-1 md:gap-2 bg-black sticky bottom-0 z-10">
+            <div className="chat-composer relative min-w-0 p-2 border-t border-border flex items-center gap-1 md:gap-2 bg-black sticky bottom-0 z-10">
+              {emojiOpen && <div className="absolute bottom-full left-2 mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-border bg-[#0d1d2f] p-3 shadow-2xl">{['😀','😂','😍','😎','😭','🔥','✨','❤️','👍','🎉','🤝','🙏','🤔','😡','🥳','💬'].map(emoji => <button key={emoji} type="button" onClick={() => { setMessageText(value => `${value}${emoji}`); setEmojiOpen(false) }} className="rounded-lg p-2 text-xl hover:bg-[#12263a]">{emoji}</button>)}</div>}
               <div className="flex gap-0.5 md:gap-1 px-1 md:px-2">
-                <button className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
-                  <Image size={18} className="md:w-5 md:h-5" />
+                <button type="button" onClick={() => mediaInputRef.current?.click()} title="Прикрепить фото, видео или аудио" className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
+                  <Paperclip size={18} className="md:w-5 md:h-5" />
                 </button>
-                <button className="hidden sm:block p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
+                <input ref={mediaInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleMedia} className="hidden" />
+                <button type="button" onClick={() => setEmojiOpen(value => !value)} title="Emoji" className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
                   <Smile size={18} className="md:w-5 md:h-5" />
                 </button>
               </div>
+              {mediaDraft && <button type="button" onClick={() => setMediaDraft(null)} title="Убрать вложение" className="flex max-w-20 items-center gap-1 rounded-lg bg-[#12263a] px-2 py-1 text-xs text-[#5de4ca]"><span className="truncate">{mediaDraft.mediaName}</span><X size={14} /></button>}
               <div className="flex-1 relative flex items-center">
                 <input type="text" value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
@@ -206,11 +227,13 @@ export default function Messages() {
               <button 
                 onClick={() => {
                   if (messageText.trim()) {
-                    sendMessage(selectedConvId, messageText)
+                    sendMessage(selectedConvId, messageText, mediaDraft)
                     setMessageText('')
+                    setMediaDraft(null)
+                    setEmojiOpen(false)
                   }
                 }}
-                disabled={!messageText.trim()}
+                disabled={!messageText.trim() && !mediaDraft}
                 className="p-2 text-primary disabled:opacity-50 hover:bg-primary/10 rounded-full transition-colors"
               >
                 <Send size={18} className="md:w-5 md:h-5" />

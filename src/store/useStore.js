@@ -185,7 +185,7 @@ export const useStore = create(
         set((state) => ({ stories: [{ id: `s_${Date.now()}`, authorId: state.activeUserId, text: text.trim(), image, createdAt: new Date().toISOString() }, ...(state.stories || [])] }))
       },
 
-      sendMessage: async (conversationId, text) => {
+      sendMessage: async (conversationId, text, media = null) => {
         const state = get()
         const activeUserId = state.activeUserId
         const conversation = state.conversations.find(c => c.id === conversationId)
@@ -201,7 +201,7 @@ export const useStore = create(
         }
 
         try {
-          const result = await api(`/api/chats/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ text }) })
+          const result = await api(`/api/chats/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ text, ...(media || {}) }) })
           newMessage = normalizeMessage(result.message)
         } catch { return }
 
