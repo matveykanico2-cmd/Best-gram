@@ -159,6 +159,10 @@ export const useStore = create(
         try { await api('/api/reports', { method: 'POST', body: JSON.stringify({ targetType: 'user', targetId: userId, reason }) }); return true } catch { return false }
       },
 
+      reportPost: async (postId, reason = 'Нарушение правил') => {
+        try { await api('/api/reports', { method: 'POST', body: JSON.stringify({ targetType: 'post', targetId: postId, reason }) }); return true } catch { return false }
+      },
+
       updateProfile: async (updatedData) => {
         const activeUserId = get().activeUserId
         try {
@@ -168,12 +172,11 @@ export const useStore = create(
         } catch { return false }
       },
 
-      toggleBookmark: (tweetId) => {
-        set((state) => ({
-          bookmarks: state.bookmarks.includes(tweetId)
-            ? state.bookmarks.filter(id => id !== tweetId)
-            : [...state.bookmarks, tweetId]
-        }))
+      toggleBookmark: async (tweetId) => {
+        try {
+          const result = await api(`/api/posts/${tweetId}/bookmark`, { method: 'POST' })
+          set(state => ({ bookmarks: result.bookmarked ? [tweetId, ...state.bookmarks.filter(id => id !== tweetId)] : state.bookmarks.filter(id => id !== tweetId) }))
+        } catch { return }
       },
 
       addStory: async (text, image = null) => {
@@ -272,12 +275,12 @@ export const useStore = create(
       fetchInitialData: async () => {
         if (!getApiToken()) { set({ activeUserId: null, isBootstrapping: false, users: [], tweets: [], stories: [], conversations: [], messages: [], notifications: [], bookmarks: [], communities: [], lists: [] }); return }
         try {
-          const [me, feed, stories, chats, directory] = await Promise.all([api('/api/me'), api('/api/feed'), api('/api/stories'), api('/api/chats'), api('/api/users/search?q=')])
+          const [me, feed, stories, chats, directory, bookmarks] = await Promise.all([api('/api/me'), api('/api/feed'), api('/api/stories'), api('/api/chats'), api('/api/users/search?q='), api('/api/bookmarks')])
           const remoteUsers = [...directory.users, ...feed.posts.map(post => post.author), ...stories.stories.map(story => ({ id: story.userId, name: story.name, username: story.username, handle: `@${story.username}`, avatar: story.avatar, verified: false })), ...chats.chats.map(chat => ({ id: chat.participantId, name: chat.name, username: chat.username, handle: `@${chat.username}`, avatar: chat.avatar, online: Boolean(chat.online), lastSeen: chat.lastSeen }))]
           const users = [me.user, ...remoteUsers.filter(user => user?.id && user.id !== me.user.id).filter((user, index, list) => list.findIndex(item => item.id === user.id) === index)]
           const conversations = chats.chats.map(chat => ({ id: chat.id, participantId: chat.participantId, lastMessage: chat.lastMessage || '', timestamp: chat.lastMessageAt || chat.createdAt, unread: false }))
           const messageGroups = await Promise.all(conversations.map(async conversation => { const result = await api(`/api/chats/${conversation.id}/messages`); return result.messages.map(normalizeMessage) }))
-          set({ activeUserId: me.user.id, isBootstrapping: false, users, tweets: feed.posts, stories: stories.stories, conversations, messages: messageGroups.flat(), notifications: [], bookmarks: [], following: me.user.followingIds || [], communities: [], lists: [] })
+          set({ activeUserId: me.user.id, isBootstrapping: false, users, tweets: feed.posts, stories: stories.stories, conversations, messages: messageGroups.flat(), notifications: [], bookmarks: bookmarks.postIds || [], following: me.user.followingIds || [], communities: [], lists: [] })
         } catch { setApiToken(null); set({ activeUserId: null, isBootstrapping: false }) }
       },
 

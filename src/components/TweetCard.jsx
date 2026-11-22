@@ -1,4 +1,4 @@
-import { MessageCircle, Repeat2, Heart, BarChart2, Share, MoreHorizontal, Bookmark, Pencil, Trash2 } from 'lucide-react'
+import { MessageCircle, Repeat2, Heart, BarChart2, Share, MoreHorizontal, Bookmark, Pencil, Trash2, Flag } from 'lucide-react'
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useStore } from '../store/useStore'
@@ -17,6 +17,7 @@ export default function TweetCard({ tweet, isReply = false }) {
   const toggleBookmark = useStore(state => state.toggleBookmark)
   const editTweet = useStore(state => state.editTweet)
   const deleteTweet = useStore(state => state.deleteTweet)
+  const reportPost = useStore(state => state.reportPost)
   const bookmarks = useStore(state => state.bookmarks)
   
   const author = users.find(u => u.id === tweet.authorId) || users[0]
@@ -86,10 +87,7 @@ export default function TweetCard({ tweet, isReply = false }) {
           <button onClick={(e) => { e.stopPropagation(); setMenuOpen(value => !value) }} className="text-secondary p-2 hover:bg-primary/10 hover:text-primary rounded-full transition-colors">
             <MoreHorizontal size={18} />
           </button>
-          {menuOpen && canManage && <div className="absolute right-4 top-12 z-20 w-44 rounded-2xl border border-[#28445c] bg-[#0d1d2f] p-1 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <button onClick={async () => { const content = window.prompt('Изменить публикацию', tweet.content); if (content?.trim()) { await editTweet(tweet.id, content.trim()); setMenuOpen(false) } }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-white/10"><Pencil size={15} /> Изменить</button>
-            <button onClick={async () => { if (window.confirm('Удалить публикацию?')) { await deleteTweet(tweet.id); setMenuOpen(false) } }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-300 hover:bg-red-500/10"><Trash2 size={15} /> Удалить</button>
-          </div>}
+          {menuOpen && <div className="absolute right-4 top-12 z-20 w-48 rounded-2xl border border-[#28445c] bg-[#0d1d2f] p-1 shadow-2xl" onClick={e => e.stopPropagation()}>{canManage ? <><button onClick={async () => { const content = window.prompt('Изменить публикацию', tweet.content); if (content?.trim()) { await editTweet(tweet.id, content.trim()); setMenuOpen(false) } }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-white/10"><Pencil size={15} /> Изменить</button><button onClick={async () => { if (window.confirm('Удалить публикацию?')) { await deleteTweet(tweet.id); setMenuOpen(false) } }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-300 hover:bg-red-500/10"><Trash2 size={15} /> Удалить</button></> : <button onClick={async () => { const reason = window.prompt('Причина жалобы', 'Нарушение правил'); if (reason?.trim() && await reportPost(tweet.id, reason)) { setMenuOpen(false); window.alert('Жалоба отправлена модераторам') } }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-white/10"><Flag size={15} /> Пожаловаться</button>}</div>}
         </div>
 
         <div className="text-[15px] leading-normal whitespace-pre-wrap break-words">
