@@ -44,7 +44,8 @@ button { cursor: pointer; }
 @media (max-width: 767px) {
   .app-shell { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
   .glass-panel { border-radius: 1.25rem; }
-  .auth-input { min-height: 48px; font-size: 16px; }
+  .auth-input, input, textarea, select { font-size: 16px; }
+  .auth-input { min-height: 48px; }
   .chat-input { min-height: 44px; font-size: 16px; }
   .chat-composer { padding-bottom: 8px; }
   .loading-screen { padding: 24px; }

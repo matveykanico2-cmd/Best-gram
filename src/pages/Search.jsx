@@ -45,7 +45,7 @@ export default function Search() {
             <input 
               type="text" 
               defaultValue={query}
-              placeholder="Search"
+              placeholder="Поиск в best-gram"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   navigate(`/search?q=${e.target.value}`)
@@ -108,8 +108,9 @@ export default function Search() {
             ))
           ) : (
             <div className="p-10 text-center">
-              <h2 className="text-3xl font-bold mb-2">Нет результатов для «{query}»</h2>
-              <p className="text-secondary">Try searching for something else, or check your Search settings to see if they're protecting you from potentially sensitive content.</p>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SearchIcon size={22} /></div>
+              <h2 className="mt-4 text-xl font-bold">Ничего не найдено</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-secondary">По запросу «{query}» пока нет пользователей или публикаций.</p>
             </div>
           )
         ) : (
@@ -119,8 +120,9 @@ export default function Search() {
             ))
           ) : (
             <div className="p-10 text-center">
-              <h2 className="text-3xl font-bold mb-2">Нет результатов для «{query}»</h2>
-              <p className="text-secondary">Try searching for something else, or check your Search settings to see if they're protecting you from potentially sensitive content.</p>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SearchIcon size={22} /></div>
+              <h2 className="mt-4 text-xl font-bold">Ничего не найдено</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-secondary">По запросу «{query}» пока нет результатов.</p>
             </div>
           )
         )}

@@ -58,13 +58,9 @@ export default function Explore() {
             />
 
             {/* Search Results Dropdown */}
-            {(isSearchFocused && searchQuery) && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-black border border-border rounded-xl shadow-xl shadow-white/20 min-h-[100px] max-h-[80vh] overflow-y-auto z-50">
-                {filteredUsers.length === 0 && filteredTweets.length === 0 ? (
-                  <div className="p-8 text-center text-secondary">
-                    Нет результатов для «{searchQuery}»
-                  </div>
-                ) : (
+            {(isSearchFocused && searchQuery && (filteredUsers.length > 0 || filteredTweets.length > 0)) && (
+              <div className="absolute top-full left-0 right-0 mt-1 max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-[#0b1726] shadow-2xl shadow-black/40 z-50">
+                {
                   <>
                     {filteredUsers.length > 0 && (
                       <div className="py-2 border-b border-border">
@@ -94,7 +90,7 @@ export default function Explore() {
                       </div>
                     )}
                   </>
-                )}
+                }
               </div>
             )}
           </div>
