@@ -1,0 +1,21 @@
+services:
+  bestgram:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ""
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      ADMIN_PHONE: ${ADMIN_PHONE:-+79781827502}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in Dokploy}
+      SESSION_DAYS: ${SESSION_DAYS:-180}
+      DONATEPAY_URL: ${DONATEPAY_URL:-https://donatepay.ru/}
+    ports:
+      - "4000"
+    volumes:
+      - bestgram-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  bestgram-data:

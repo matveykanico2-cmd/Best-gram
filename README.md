@@ -98,6 +98,19 @@ npm run dev:full
 
 Проект готов для Vercel и Netlify. Команда сборки: `npm run build`, папка публикации: `dist`. Файлы `vercel.json` и `public/_redirects` уже добавлены для работы React Router при прямом открытии страниц.
 
+### Docker / Dokploy
+
+Для Dokploy можно выбрать `Dockerfile` из корня репозитория. Контейнер собирает фронтенд и запускает API на порту `4000`; фронтенд и API работают на одном домене. В Dokploy укажите `Container Port: 4000` и добавьте named volume:
+
+```text
+Volume name: bestgram-data
+Mount path: /app/server/data
+```
+
+В Environment обязательно задайте `ADMIN_PASSWORD`, а также при необходимости `ADMIN_PHONE`, `SESSION_DAYS` и `DONATEPAY_URL`. Не монтируйте весь `/app`: это скроет файлы приложения. Файл SQLite сохраняется в volume `bestgram-data`.
+
+Вариант через Compose использует готовый `docker-compose.yml` из корня проекта. Для локальной проверки: `docker compose up --build`.
+
 Для online-режима API запускается отдельным процессом командой `npm run api`. На хостинге укажите `VITE_API_URL` на публичный URL API и сохраните каталог `server/data` на постоянном диске. SMS-подтверждения нет: номер телефона используется как идентификатор аккаунта. В продакшене обязательно используйте HTTPS и задайте собственный `ADMIN_PASSWORD`.
 
 ## Установка как приложение

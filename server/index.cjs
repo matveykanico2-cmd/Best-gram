@@ -140,6 +140,17 @@ app.delete('/api/admin/posts/:id', requireAuth, requireAdmin, (req, res) => { db
 app.get('/api/admin/ads', requireAuth, requireAdmin, (_, res) => res.json({ ads: db.prepare('SELECT a.*, u.name AS ownerName, u.username AS ownerUsername FROM ads a JOIN users u ON u.id=a.ownerId ORDER BY a.createdAt DESC').all() }))
 app.patch('/api/admin/ads/:id', requireAuth, requireAdmin, (req, res) => { const status = ['active', 'rejected', 'paused'].includes(req.body.status) ? req.body.status : 'rejected'; db.prepare('UPDATE ads SET status=?, reviewedAt=? WHERE id=?').run(status, now(), req.params.id); res.json({ ok: true, status }) })
 
+// В production этот же контейнер раздаёт собранный React-фронтенд.
+// API-маршруты объявлены выше, поэтому они не перехватываются fallback-ом.
+const frontendDir = path.join(__dirname, '../dist')
+if (fs.existsSync(frontendDir)) {
+  app.use(express.static(frontendDir, { index: 'index.html' }))
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) return next()
+    res.sendFile(path.join(frontendDir, 'index.html'))
+  })
+}
+
 const server = http.createServer(app)
 const wss = new WebSocketServer({ server, path: '/ws' })
 const sockets = new Map()

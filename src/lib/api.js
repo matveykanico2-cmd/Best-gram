@@ -1,4 +1,6 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '')
+// В production фронтенд и API работают на одном домене. Для локальной разработки
+// оставляем отдельный API-порт.
+const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '')).replace(/\/$/, '')
 const TOKEN_KEY = 'best-gram-auth-token'
 const LEGACY_TOKEN_KEY = 'bestgram-api-token'
 
