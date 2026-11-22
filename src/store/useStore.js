@@ -176,10 +176,10 @@ export const useStore = create(
         }))
       },
 
-      addStory: async (text) => {
+      addStory: async (text, image = null) => {
         if (!text?.trim()) return
-        try { await api('/api/stories', { method: 'POST', body: JSON.stringify({ text }) }) } catch { return }
-        set((state) => ({ stories: [{ id: `s_${Date.now()}`, authorId: state.activeUserId, text: text.trim(), createdAt: new Date().toISOString() }, ...(state.stories || [])] }))
+        try { await api('/api/stories', { method: 'POST', body: JSON.stringify({ text, image }) }) } catch { return }
+        set((state) => ({ stories: [{ id: `s_${Date.now()}`, authorId: state.activeUserId, text: text.trim(), image, createdAt: new Date().toISOString() }, ...(state.stories || [])] }))
       },
 
       sendMessage: async (conversationId, text) => {
