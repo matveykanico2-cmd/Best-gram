@@ -1,6 +1,4 @@
-<<<<<<< HEAD
 # Best-gram
-=======
 # best-gram — социальная сеть
 
 Полноценная русскоязычная социальная сеть best-gram на React, Tailwind CSS, Zustand и Node.js API с SQLite/WebSocket.
@@ -64,15 +62,6 @@
    npm run build
    ```
 
-## 🧪 Credentials for Testing
-
-To explore the platform without registering, you can use:
-- **Handle:** `@dev_guy`
-- **Password:** `password123`
-
----
-
-Built with ❤️ by Antigravity
 # Bestgram
 
 Русскоязычная социальная сеть на React + Vite + Zustand.
@@ -88,7 +77,7 @@ npm run dev:full
 
 ## Администратор
 
-Перед деплоем скопируйте `.env.example` в `.env` и обязательно замените `ADMIN_PASSWORD` и `VITE_ADMIN_PASSWORD`. Телефон администратора задаётся через `ADMIN_PHONE`. Администратор входит через обычную форму по телефону и паролю, после чего получает доступ к `/admin`.
+Перед деплоем скопируйте `.env.example` в `.env` и обязательно замените `ADMIN_PASSWORD`. Телефон администратора задаётся через `ADMIN_PHONE`. Пароль хранится только на backend и не передаётся во фронтенд. Администратор входит через обычную форму по телефону и паролю, после чего получает доступ к `/admin`.
 
 ## DonatePay
 
@@ -122,4 +111,3 @@ Frontend содержит `manifest.webmanifest` и service worker: после �
 ## Публикации и модерация
 
 Пользователь может редактировать и удалять свои публикации, администратор — любые публикации. Панель администратора позволяет назначать синюю, золотую или серую галочку и снимать её. Все проверки прав выполняются на сервере, а не только в интерфейсе.
->>>>>>> a7f91ef (prepare best-gram for production)
