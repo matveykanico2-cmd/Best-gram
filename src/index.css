@@ -11,7 +11,8 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: #07111f; color: #f8fafc; overflow-y: scroll; }
+html, body, #root { width: 100%; min-height: 100%; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #07111f; color: #f8fafc; overflow-x: hidden; overflow-y: scroll; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 ::selection { background: #21c7a8; color: #06121f; }
@@ -38,3 +39,10 @@ button { cursor: pointer; }
 .tweet-content-link:hover { text-decoration: underline; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+.mobile-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(4rem + env(safe-area-inset-bottom)); }
+@media (max-width: 767px) {
+  .app-shell { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+  .glass-panel { border-radius: 1.25rem; }
+  .auth-input { min-height: 48px; font-size: 16px; }
+  .loading-screen { padding: 24px; }
+}
