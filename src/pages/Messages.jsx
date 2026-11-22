@@ -101,7 +101,7 @@ export default function Messages() {
   const handleBack = () => setSelectedConvId(null)
 
   return (
-    <div className="messages-shell flex-1 flex md:ml-20 xl:ml-64 w-full overflow-hidden">
+    <div className="messages-shell flex min-w-0 flex-1 md:ml-20 xl:ml-64 w-full max-w-full overflow-hidden">
       {/* Conversation List */}
       <div className={cn(
         "w-full md:max-w-[400px] border-r border-border flex flex-col transition-all",
@@ -186,7 +186,7 @@ export default function Messages() {
                <div ref={messagesEndRef} />
             </div>
 
-            <div className="chat-composer p-2 border-t border-border flex items-center gap-1 md:gap-2 bg-black sticky bottom-0 z-10">
+            <div className="chat-composer min-w-0 p-2 border-t border-border flex items-center gap-1 md:gap-2 bg-black sticky bottom-0 z-10">
               <div className="flex gap-0.5 md:gap-1 px-1 md:px-2">
                 <button className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
                   <Image size={18} className="md:w-5 md:h-5" />

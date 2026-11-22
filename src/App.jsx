@@ -47,7 +47,7 @@ function App() {
   return (
     <>
       <div className="app-shell min-h-screen text-white flex justify-center pb-16 md:pb-0">
-        <div className="flex w-full max-w-[1300px] relative">
+        <div className="relative flex min-w-0 w-full max-w-[1300px] overflow-x-hidden">
           <Sidebar />
           
           <Routes>
