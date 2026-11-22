@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, CalendarDays, Link as LinkIcon, MapPin, MoreHorizontal, Circle } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Link as LinkIcon, MapPin, MoreHorizontal, Circle, ShieldBan, Flag } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 import TweetCard from '../components/TweetCard'
@@ -16,7 +16,8 @@ export default function Profile() {
   const { userId: paramId } = useParams()
   const [activeTab, setActiveTab] = useState('Публикации')
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const { users, activeUserId, tweets, following, toggleFollow } = useStore()
+  const [isSafetyMenuOpen, setIsSafetyMenuOpen] = useState(false)
+  const { users, activeUserId, tweets, following, toggleFollow, blockUser, reportUser } = useStore()
   
   const displayId = paramId || activeUserId
   const user = users.find(u => u.id === displayId)
@@ -91,7 +92,7 @@ export default function Profile() {
               </button>
             ) : (
               <div className="flex gap-2 mb-2">
-                <button className="p-2 border border-border rounded-full hover:bg-hover transition-colors">
+                <button onClick={() => setIsSafetyMenuOpen(value => !value)} title="Дополнительные действия" className="p-2 border border-border rounded-full hover:bg-hover transition-colors">
                   <MoreHorizontal size={20} />
                 </button>
                 <button 
@@ -110,6 +111,7 @@ export default function Profile() {
                     </>
                   ) : "Подписаться"}
                 </button>
+                {isSafetyMenuOpen && <div className="absolute right-4 top-14 z-20 w-56 overflow-hidden rounded-2xl border border-border bg-[#0d1d2f] p-1 shadow-2xl"><button onClick={async () => { if (window.confirm('Заблокировать этого пользователя?')) { await blockUser(displayId); setIsSafetyMenuOpen(false); navigate('/'); } }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-red-500/10 hover:text-red-300"><ShieldBan size={18} /> Заблокировать</button><button onClick={async () => { const reason = window.prompt('Причина жалобы', 'Нарушение правил'); if (reason?.trim() && await reportUser(displayId, reason)) { setIsSafetyMenuOpen(false); window.alert('Жалоба отправлена модераторам'); } }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#12263a]"><Flag size={18} /> Пожаловаться</button></div>}
               </div>
             )}
           </div>

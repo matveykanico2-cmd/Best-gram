@@ -151,6 +151,14 @@ export const useStore = create(
         })
       },
 
+      blockUser: async (userId) => {
+        try { const result = await api(`/api/users/${userId}/block`, { method: 'POST' }); set(state => ({ following: result.blocked ? state.following.filter(id => id !== userId) : state.following })); return result.blocked } catch { return false }
+      },
+
+      reportUser: async (userId, reason = 'Нарушение правил') => {
+        try { await api('/api/reports', { method: 'POST', body: JSON.stringify({ targetType: 'user', targetId: userId, reason }) }); return true } catch { return false }
+      },
+
       updateProfile: async (updatedData) => {
         const activeUserId = get().activeUserId
         try {
