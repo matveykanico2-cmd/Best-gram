@@ -8,6 +8,7 @@ const Database = require('better-sqlite3')
 const { WebSocketServer } = require('ws')
 
 const PORT = Number(process.env.PORT || 4000)
+const HOST = process.env.HOST || '0.0.0.0'
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 180)
 const ADMIN_PHONE = process.env.ADMIN_PHONE || '+79781827502'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'bestgram-admin-2026'
@@ -157,4 +158,4 @@ const sockets = new Map()
 function broadcast(chatId, payload) { for (const [socket, data] of sockets) if (data.chatId === chatId && socket.readyState === 1) socket.send(JSON.stringify(payload)) }
 wss.on('connection', (socket, req) => { const token = new URL(req.url, `http://${req.headers.host}`).searchParams.get('token'); const session = token && db.prepare('SELECT * FROM sessions WHERE token=? AND expiresAt>?').get(token, now()); if (!session) return socket.close(1008, 'unauthorized'); sockets.set(socket, { userId: session.userId, chatId: null }); socket.on('message', raw => { try { const data = JSON.parse(raw); if (data.type === 'chat:join') sockets.set(socket, { userId: session.userId, chatId: data.chatId }) } catch {} }); socket.on('close', () => sockets.delete(socket)) })
 
-server.listen(PORT, () => console.log(`Bestgram API listening on http://localhost:${PORT}`))
+server.listen(PORT, HOST, () => console.log(`Bestgram API listening on ${HOST}:${PORT}`))
