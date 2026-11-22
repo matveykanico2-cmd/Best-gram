@@ -40,9 +40,13 @@ button { cursor: pointer; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 .mobile-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(4rem + env(safe-area-inset-bottom)); }
+.messages-shell { height: calc(100dvh - 4rem - env(safe-area-inset-bottom)); }
 @media (max-width: 767px) {
   .app-shell { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
   .glass-panel { border-radius: 1.25rem; }
   .auth-input { min-height: 48px; font-size: 16px; }
+  .chat-input { min-height: 44px; font-size: 16px; }
+  .chat-composer { padding-bottom: 8px; }
   .loading-screen { padding: 24px; }
 }
+@media (min-width: 768px) { .messages-shell { height: 100dvh; } }
