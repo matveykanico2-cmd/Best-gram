@@ -25,11 +25,20 @@ const route = (pathname, method) => {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/media/') && request.method === 'GET') {
+      const object = await env.BUCKET?.get(url.pathname.slice('/media/'.length));
+      if (!object) return new Response('Not found', { status: 404 });
+      return new Response(object.body, { headers: { 'content-type': object.httpMetadata?.contentType || 'application/octet-stream', 'cache-control': 'public, max-age=31536000, immutable' } });
+    }
+    if (url.pathname === '/api/realtime' && request.headers.get('Upgrade') === 'websocket') {
+      const pair = new WebSocketPair(); const [client, server] = Object.values(pair); server.accept(); server.addEventListener('message', event => { try { const payload = JSON.parse(event.data); server.send(JSON.stringify({ ...payload, received_at: now() })); } catch { server.send(JSON.stringify({ type: 'error', error: 'invalid_json' })); } }); server.addEventListener('close', () => server.close()); return new Response(null, { status: 101, webSocket: client });
+    }
     if (!url.pathname.startsWith('/api/')) return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     if (request.method === 'OPTIONS') return new Response(null, { headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS' } });
     const { resource, action } = route(url.pathname, request.method);
     try {
       if (resource === 'health') return json({ ok: true, service: 'retrynet-api', time: now() });
+      if (resource === 'media' && request.method === 'POST') { const form=await request.formData(); const file=form.get('file'); if(!(file instanceof File))return json({error:'file_required'},400); const key=`${user.id}/${id()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`; await env.BUCKET.put(key,file.stream(),{httpMetadata:{contentType:file.type||'application/octet-stream'}}); return json({key,url:`/media/${key}`,content_type:file.type||'application/octet-stream'},201); }
       if (resource === 'auth' && action === 'register' && request.method === 'POST') {
         const body = await readBody(request); if ((!body.email && !body.phone) || !body.password || !body.display_name || !body.username) return json({ error: 'email_or_phone_password_name_username_required' }, 400);
         const userId = id(); const passwordHash = await hash(body.password);
