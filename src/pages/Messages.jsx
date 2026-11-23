@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 const ConversationItem = ({ conversation, active, onClick }) => {
   const users = useStore(state => state.users)
   const user = users.find(u => u.id === conversation.participantId)
+  const presence = user?.online ? 'в сети' : user?.lastSeen ? `был(а) ${format(new Date(user.lastSeen), 'dd.MM в HH:mm')}` : 'статус неизвестен'
 
   return (
     <div 
@@ -41,6 +42,7 @@ const ConversationItem = ({ conversation, active, onClick }) => {
             <div className="w-2 h-2 bg-primary rounded-full ml-2 shrink-0" />
           )}
         </div>
+        <p className={cn('mt-1 truncate text-xs', user?.online ? 'text-[#5de4ca]' : 'text-secondary')}>{presence}</p>
       </div>
     </div>
   )
@@ -149,14 +151,14 @@ export default function Messages() {
         </div>
         
         <div className="flex-1 overflow-y-auto">
-          {conversations.map(c => (
+          {conversations.length ? conversations.map(c => (
             <ConversationItem 
               key={c.id} 
               conversation={c} 
               active={selectedConvId === c.id}
               onClick={() => setSelectedConvId(c.id)}
             />
-          ))}
+          )) : <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center"><div className="mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-[#12263a] text-3xl">💬</div><h2 className="text-lg font-bold">Чатов пока нет</h2><p className="mt-2 max-w-xs text-sm text-secondary">Найдите пользователя сверху и нажмите «Написать», чтобы начать диалог.</p><button onClick={() => { setSearchQuery(''); window.setTimeout(() => searchInputRef.current?.focus(), 0) }} className="mt-5 rounded-full bg-primary px-5 py-2.5 font-bold text-[#06121f]">Найти человека</button></div>}
         </div>
       </div>
 
@@ -196,7 +198,8 @@ export default function Messages() {
                   <Avatar src={participant?.avatar} name={participant?.name} className="w-16 h-16 rounded-full mb-2" />
                   <span className="font-bold text-xl text-center px-4">{participant?.name}</span>
                   <span className="text-secondary">{participant?.handle}</span>
-                  <p className="text-secondary text-sm md:text-[15px] mt-3 text-center px-4">{participant?.online ? 'Сейчас в сети' : 'Был(а) недавно'}</p>
+                  <p className="text-secondary text-sm md:text-[15px] mt-3 text-center px-4">{participant?.online ? 'Сейчас в сети' : participant?.lastSeen ? `Последний вход: ${format(new Date(participant.lastSeen), 'dd.MM.yyyy в HH:mm')}` : 'Время последнего входа неизвестно'}</p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs text-[#91a8bb]"><span className="rounded-full bg-[#12263a] px-3 py-1">Подписчики: {participant?.stats?.followers ?? 0}</span><span className="rounded-full bg-[#12263a] px-3 py-1">Подписки: {participant?.stats?.following ?? 0}</span>{participant?.premium && <span className="rounded-full bg-[#f5c451]/15 px-3 py-1 text-[#f5c451]">Premium</span>}</div>
                </div>
 
                {activeMessages.map(m => (
