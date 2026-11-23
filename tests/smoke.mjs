@@ -14,7 +14,7 @@ for (const route of workerRoutes) if (!worker.includes(route.split('/').filter(B
   const resource = route.split('/')[2];
   if (!worker.includes(`resource === '${resource}'`)) throw new Error(`missing worker resource: ${resource}`);
 }
-for (const hook of ['apiRequest', 'localStorage', 'WebSocket', '/api/media', 'storyMediaInput', 'reelVideoInput', '/reels', '/videos', '/drafts', '/scheduled', 'renderServerChats', 'messagePollTimer', '/messages?conversation_id=', '/recommendations?limit=30', 'loadMoreFeed', 'before=']) if (!html.includes(hook)) throw new Error(`missing frontend hook: ${hook}`);
+for (const hook of ['apiRequest', 'localStorage', 'WebSocket', '/api/media', 'storyMediaInput', 'reelVideoInput', '/reels', '/videos', 'loadMarketplace', 'loadEvents', 'listing-save', 'event-attend', '/drafts', '/scheduled', 'renderServerChats', 'messagePollTimer', '/messages?conversation_id=', '/recommendations?limit=30', 'loadMoreFeed', 'before=']) if (!html.includes(hook)) throw new Error(`missing frontend hook: ${hook}`);
 for (const invariant of ['file.size>25*1024*1024', 'unsupported_media_type', 'deleted_at IS NULL', 'message_reaction', 'new_message', 'next_before', 'post_media']) if (!worker.includes(invariant)) throw new Error(`missing backend invariant: ${invariant}`);
 
 execFileSync(process.execPath, ['--check', 'dist/server/index.js'], { stdio: 'inherit' });
