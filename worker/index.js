@@ -11,6 +11,8 @@ const hash = async (value) => {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('');
 };
+const passwordHash = async value => { const salt=crypto.getRandomValues(new Uint8Array(16)); const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(value),'PBKDF2',false,['deriveBits']); const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},key,256); return `pbkdf2$100000$${btoa(String.fromCharCode(...salt))}$${btoa(String.fromCharCode(...new Uint8Array(bits)))}`; };
+const passwordVerify = async (value,stored) => { if(!stored?.startsWith('pbkdf2$'))return stored===await hash(value); const [,iterations,saltText,digestText]=stored.split('$'); const salt=Uint8Array.from(atob(saltText),c=>c.charCodeAt(0)); const expected=Uint8Array.from(atob(digestText),c=>c.charCodeAt(0)); const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(value),'PBKDF2',false,['deriveBits']); const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:Number(iterations),hash:'SHA-256'},key,256)); return bits.length===expected.length&&bits.every((x,i)=>x===expected[i]); };
 const readBody = async request => { try { return await request.json(); } catch { return {}; } };
 const safeUser = row => row && ({ id: row.id, email: row.email, phone: row.phone, display_name: row.display_name, username: row.username, avatar_url: row.avatar_url });
 const requireSession = async (request, env) => {
@@ -41,16 +43,16 @@ export default {
       if (resource === 'health') return json({ ok: true, service: 'retrynet-api', time: now() });
       if (resource === 'auth' && action === 'register' && request.method === 'POST') {
         const body = await readBody(request); if ((!body.email && !body.phone) || !body.password || !body.display_name || !body.username) return json({ error: 'email_or_phone_password_name_username_required' }, 400);
-        const userId = id(); const passwordHash = await hash(body.password);
+        const userId = id(); const passwordHashValue = await passwordHash(body.password);
         await env.DB.batch([
-          env.DB.prepare('INSERT INTO users (id,email,phone,password_hash,display_name,username) VALUES (?,?,?,?,?,?)').bind(userId, body.email || null, body.phone || null, passwordHash, body.display_name, body.username),
+          env.DB.prepare('INSERT INTO users (id,email,phone,password_hash,display_name,username) VALUES (?,?,?,?,?,?)').bind(userId, body.email || null, body.phone || null, passwordHashValue, body.display_name, body.username),
           env.DB.prepare('INSERT INTO profiles (user_id) VALUES (?)').bind(userId)
         ]);
         return json({ user: { id: userId, display_name: body.display_name, username: body.username }, verification_required: true }, 201);
       }
       if (resource === 'auth' && action === 'login' && request.method === 'POST') {
         const body = await readBody(request); const user = await env.DB.prepare('SELECT * FROM users WHERE email=?1 OR phone=?1').bind(body.identity).first();
-        if (!user || user.password_hash !== await hash(body.password || '')) return json({ error: 'invalid_credentials' }, 401);
+        if (!user || !(await passwordVerify(body.password || '',user.password_hash))) return json({ error: 'invalid_credentials' }, 401);
         const session = id(); await env.DB.prepare('INSERT INTO sessions (id,user_id,device_name,expires_at) VALUES (?,?,?,?)').bind(session, user.id, body.device_name || 'Web browser', new Date(Date.now() + 30 * 86400000).toISOString()).run();
         return new Response(JSON.stringify({ user: safeUser(user), session }), { headers: { 'content-type': 'application/json', 'set-cookie': `retrynet_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000` } });
       }
@@ -63,7 +65,7 @@ export default {
       const user = await requireSession(request, env); if (!user) return json({ error: 'authentication_required' }, 401);
       if (resource === 'media' && request.method === 'POST') { const form=await request.formData(); const file=form.get('file'); if(!(file instanceof File))return json({error:'file_required'},400); const key=`${user.id}/${id()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`; await env.BUCKET.put(key,file.stream(),{httpMetadata:{contentType:file.type||'application/octet-stream'}}); return json({key,url:`/media/${key}`,content_type:file.type||'application/octet-stream'},201); }
       if (resource === 'me' && request.method === 'GET') return json({ user: safeUser(user) });
-      if (resource === 'auth' && action === 'change-password' && request.method === 'POST') { const body=await readBody(request); const row=await env.DB.prepare('SELECT password_hash FROM users WHERE id=?').bind(user.id).first(); if(!row||row.password_hash!==await hash(body.current_password||''))return json({error:'invalid_current_password'},400); await env.DB.prepare('UPDATE users SET password_hash=?,updated_at=? WHERE id=?').bind(await hash(body.new_password||''),now(),user.id).run(); return json({ok:true}); }
+      if (resource === 'auth' && action === 'change-password' && request.method === 'POST') { const body=await readBody(request); const row=await env.DB.prepare('SELECT password_hash FROM users WHERE id=?').bind(user.id).first(); if(!row||!(await passwordVerify(body.current_password||'',row.password_hash)))return json({error:'invalid_current_password'},400); await env.DB.prepare('UPDATE users SET password_hash=?,updated_at=? WHERE id=?').bind(await passwordHash(body.new_password||''),now(),user.id).run(); return json({ok:true}); }
       if (resource === 'auth' && action === 'verify-email' && request.method === 'POST') { await env.DB.prepare('UPDATE users SET email_verified_at=?,updated_at=? WHERE id=?').bind(now(),now(),user.id).run(); return json({ok:true}); }
       if (resource === 'auth' && action === 'verify-phone' && request.method === 'POST') { await env.DB.prepare('UPDATE users SET phone_verified_at=?,updated_at=? WHERE id=?').bind(now(),now(),user.id).run(); return json({ok:true}); }
       if (resource === 'auth' && action === 'request-verification' && request.method === 'POST') { const body=await readBody(request); const channel=body.channel==='phone'?'phone':'email'; const target=channel==='phone'?user.phone:user.email; if(!target)return json({error:'channel_not_configured'},400); const plain=code(); await env.DB.prepare('INSERT INTO verification_codes (id,user_id,channel,target,code_hash,expires_at) VALUES (?,?,?,?,?,?)').bind(id(),user.id,channel,target,await hash(plain),new Date(Date.now()+10*60*1000).toISOString()).run(); await env.DB.prepare('INSERT INTO notifications (id,user_id,type,payload_json) VALUES (?,?,?,?)').bind(id(),user.id,'verification_code',JSON.stringify({channel,target,delivery:'provider_pending'})).run(); return json({ok:true,expires_in:600}); }
