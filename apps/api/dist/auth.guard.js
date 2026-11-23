@@ -14,7 +14,7 @@ let AuthGuard = class AuthGuard {
     constructor(auth) {
         this.auth = auth;
     }
-    async canActivate(context) { const request = context.switchToHttp().getRequest(); request.user = await this.auth.fromToken(request.cookies?.retrynet_token || request.headers.authorization?.replace('Bearer ', '')); return true; }
+    async canActivate(context) { const request = context.switchToHttp().getRequest(); request.user = await this.auth.fromToken(request.cookies?.nexora_token || request.headers.authorization?.replace('Bearer ', '')); return true; }
 };
 AuthGuard = __decorate([
     Injectable(),

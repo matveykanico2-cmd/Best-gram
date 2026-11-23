@@ -4,7 +4,7 @@ export async function enableBrowserNotifications() {
   return Notification.permission;
 }
 
-export function showBrowserNotification(title, body, icon = "/bestgram-mark.svg") {
+export function showBrowserNotification(title, body, icon = "/nexora-icon.png") {
   if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
-  new Notification(title, { body, icon, tag: "bestgram-message" });
+  new Notification(title, { body, icon, tag: "nexora-message" });
 }

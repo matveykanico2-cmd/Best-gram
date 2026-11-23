@@ -43,7 +43,7 @@ const Messages = () => {
     });
 
     socket.on("message_error", (data) => {
-      window.dispatchEvent(new CustomEvent("bestgram:message-error", { detail: data?.error || "Не удалось отправить сообщение" }));
+      window.dispatchEvent(new CustomEvent("nexora:message-error", { detail: data?.error || "Не удалось отправить сообщение" }));
     });
 
     // When the sender gets acknowledgment that message was saved

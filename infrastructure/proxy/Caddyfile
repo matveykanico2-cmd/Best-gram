@@ -1,4 +1,4 @@
-{$RETRYNET_DOMAIN} {
+{$NEXORA_DOMAIN} {
   encode gzip zstd
   reverse_proxy web:5173
 }

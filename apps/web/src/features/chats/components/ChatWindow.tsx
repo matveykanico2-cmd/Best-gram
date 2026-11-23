@@ -19,8 +19,8 @@ const ChatWindow = ({ socketRef, onBack }) => {
 
   useEffect(() => {
     const onMessageError = (event) => setSendError(String(event.detail || "Не удалось отправить сообщение"));
-    window.addEventListener("bestgram:message-error", onMessageError);
-    return () => window.removeEventListener("bestgram:message-error", onMessageError);
+    window.addEventListener("nexora:message-error", onMessageError);
+    return () => window.removeEventListener("nexora:message-error", onMessageError);
   }, []);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);

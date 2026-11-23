@@ -130,8 +130,8 @@ const Dock = () => {
               whileTap="tap"
             >
               <motion.img
-                src="/bestgram-mark.svg"
-                alt="Bestgram"
+                src="/nexora-icon.png"
+                alt="Nexora"
                 className="w-7 h-7"
                 variants={{
                   initial: { scale: 1, rotate: 0 },

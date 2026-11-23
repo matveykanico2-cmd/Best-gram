@@ -1,11 +1,11 @@
 {
-  "name": "Bestgram",
-  "short_name": "Bestgram",
-  "description": "Bestgram — посты, истории, сообщения и люди в одной социальной сети.",
+  "name": "Nexora",
+  "short_name": "Nexora",
+  "description": "Nexora — посты, истории, сообщения и люди в одной социальной сети.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0710",
-  "theme_color": "#0a0710",
-  "icons": [{ "src": "/bestgram-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "background_color": "#f0f2f5",
+  "theme_color": "#1877f2",
+  "icons": [{ "src": "/nexora-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any maskable" }]
 }

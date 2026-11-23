@@ -30,7 +30,7 @@ let MessagesGateway = class MessagesGateway {
     socketsOf(userId) { return [...(this.online.get(userId) || [])].map((id) => this.server.sockets.sockets.get(id)).filter(Boolean); }
     broadcastPresence(userId, online) { this.server.emit('presence:update', { userId, online, at: new Date().toISOString() }); }
     async handleConnection(socket) { try {
-        const user = await this.auth.fromToken(this.cookie(socket, 'retrynet_token') || socket.handshake.auth?.token);
+        const user = await this.auth.fromToken(this.cookie(socket, 'nexora_token') || socket.handshake.auth?.token);
         socket.data.user = { id: user.id, username: user.username };
         const peers = this.online.get(user.id) || new Set();
         const wasOffline = peers.size === 0;

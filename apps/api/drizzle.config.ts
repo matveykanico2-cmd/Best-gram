@@ -1,2 +1,2 @@
 import { defineConfig } from 'drizzle-kit';
-export default defineConfig({ schema: './src/db/schema.ts', out: './drizzle', dialect: 'postgresql', dbCredentials: { url: process.env.DATABASE_URL || 'postgres://retrynet:retrynet@localhost:5432/retrynet' } });
+export default defineConfig({ schema: './src/db/schema.ts', out: './drizzle', dialect: 'postgresql', dbCredentials: { url: process.env.DATABASE_URL || 'postgres://nexora:nexora@localhost:5432/nexora' } });

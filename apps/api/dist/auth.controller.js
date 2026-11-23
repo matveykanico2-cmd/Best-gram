@@ -19,9 +19,9 @@ let AuthController = class AuthController {
         this.auth = auth;
     }
     register(body) { return this.auth.register({ email: body.email, username: body.username, displayName: body.displayName || body.fullName || body.username, password: body.password }); }
-    async login(body, response) { const result = await this.auth.login(body.email || body.username || '', body.password); response.cookie('retrynet_token', result.token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 86400000 }); return result.user; }
-    async me(request) { return this.auth.fromToken(request.cookies?.retrynet_token || request.headers.authorization?.replace('Bearer ', '')); }
-    logout(response) { response.clearCookie('retrynet_token'); return { ok: true }; }
+    async login(body, response) { const result = await this.auth.login(body.email || body.username || '', body.password); response.cookie('nexora_token', result.token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 86400000 }); return result.user; }
+    async me(request) { return this.auth.fromToken(request.cookies?.nexora_token || request.headers.authorization?.replace('Bearer ', '')); }
+    logout(response) { response.clearCookie('nexora_token'); return { ok: true }; }
     verifyEmail(body) { return this.auth.verifyEmail(body.token); }
     forgotPassword(body) { return this.auth.requestPasswordReset(body.identity); }
     resetPassword(body) { return this.auth.resetPassword(body.token, body.password); }

@@ -17,7 +17,7 @@ const Home = () => {
     <div className="pt-4 sm:pt-8 px-0 sm:px-4 max-w-[680px] mx-auto w-full">
       {/* Mobile Header (Hidden on Desktop) */}
       <header className="flex items-center justify-between mb-6 px-4 sm:hidden">
-        <h1 className="text-2xl font-bold tracking-tight text-[#1877f2]">Bestgram</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-[#1877f2]">Nexora</h1>
       </header>
       
       {loading ? (

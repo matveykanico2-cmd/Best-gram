@@ -44,7 +44,7 @@ const ensureFeedTables = async env => { await env.DB.batch([
   ,env.DB.prepare('CREATE TABLE IF NOT EXISTS feature_items (id TEXT PRIMARY KEY,target_type TEXT NOT NULL,target_id TEXT NOT NULL,user_id TEXT NOT NULL,kind TEXT NOT NULL,payload_json TEXT NOT NULL DEFAULT \'{}\',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
 ]); };
 const requireSession = async (request, env) => {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || request.headers.get('cookie')?.match(/retrynet_session=([^;]+)/)?.[1];
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || request.headers.get('cookie')?.match(/nexora_session=([^;]+)/)?.[1];
   if (!token) return null;
   return env.DB.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?1 AND s.revoked_at IS NULL AND s.expires_at>?2 AND u.deleted_at IS NULL`).bind(token, now()).first();
 };
@@ -68,7 +68,7 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS' } });
     const { resource, action } = route(url.pathname, request.method);
     try {
-      if (resource === 'health') return json({ ok: true, service: 'retrynet-api', time: now() });
+      if (resource === 'health') return json({ ok: true, service: 'nexora-api', time: now() });
       if (resource === 'auth' && action === 'register' && request.method === 'POST') {
         const body = await readBody(request); const email = body.email ? String(body.email).trim().toLowerCase() : null; const phone = body.phone ? String(body.phone).replace(/[^+\d]/g,'') : null; if ((!email && !phone) || !body.password || String(body.password).length < 8 || !body.display_name || !body.username) return json({ error: 'email_or_phone_password_name_username_required' }, 400);
         const userId = id(); const passwordHashValue = await passwordHash(body.password);
@@ -83,12 +83,12 @@ export default {
         if (!user || !(await passwordVerify(body.password || '',user.password_hash))) return json({ error: 'invalid_credentials' }, 401);
         const session = id(); const userAgent=request.headers.get('user-agent')||''; const ipHash=await hash(request.headers.get('cf-connecting-ip')||request.headers.get('x-forwarded-for')||'unknown'); const previous=await env.DB.prepare('SELECT ip_hash,user_agent FROM sessions WHERE user_id=? ORDER BY created_at DESC LIMIT 1').bind(user.id).first(); const suspicious=Boolean(previous&&(previous.ip_hash!==ipHash||previous.user_agent!==userAgent)); const recentSuspicious=suspicious?await env.DB.prepare("SELECT COUNT(*) AS count FROM activity_log WHERE user_id=? AND action='suspicious_login' AND created_at>datetime('now','-24 hours')").bind(user.id).first():{count:0}; const shouldLock=suspicious&&Number(recentSuspicious?.count||0)>=2; const statements=[]; if(!shouldLock)statements.push(env.DB.prepare('INSERT INTO sessions (id,user_id,device_name,ip_hash,user_agent,expires_at) VALUES (?,?,?,?,?,?)').bind(session, user.id, body.device_name || 'Web browser', ipHash, userAgent, new Date(Date.now() + 30 * 86400000).toISOString())); statements.push(env.DB.prepare('INSERT INTO activity_log (id,user_id,action,metadata_json) VALUES (?,?,?,?)').bind(id(),user.id,'login',JSON.stringify({device_name:body.device_name||'Web browser'}))); if(suspicious)statements.push(env.DB.prepare('INSERT INTO activity_log (id,user_id,action,metadata_json) VALUES (?,?,?,?)').bind(id(),user.id,'suspicious_login',JSON.stringify({device_name:body.device_name||'Web browser'}))); statements.push(env.DB.prepare('INSERT INTO notifications (id,user_id,type,payload_json) VALUES (?,?,?,?)').bind(id(),user.id,suspicious?'suspicious_login':'new_login',JSON.stringify({device_name:body.device_name||'Web browser',locked:shouldLock}))); if(shouldLock)statements.push(env.DB.prepare('UPDATE users SET deleted_at=?,updated_at=? WHERE id=?').bind(now(),now(),user.id)); await env.DB.batch(statements);
         if(shouldLock)return json({error:'account_locked_suspicious_activity',suspicious_login:true},423);
-        return new Response(JSON.stringify({ user: safeUser(user), session }), { headers: { 'content-type': 'application/json', 'set-cookie': `retrynet_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000` } });
+        return new Response(JSON.stringify({ user: safeUser(user), session }), { headers: { 'content-type': 'application/json', 'set-cookie': `nexora_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000` } });
       }
       if (resource === 'auth' && action === 'logout' && request.method === 'POST') {
-        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || request.headers.get('cookie')?.match(/retrynet_session=([^;]+)/)?.[1];
+        const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || request.headers.get('cookie')?.match(/nexora_session=([^;]+)/)?.[1];
         if (token) await env.DB.prepare('UPDATE sessions SET revoked_at=? WHERE id=?').bind(now(), token).run();
-        return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json', 'set-cookie': 'retrynet_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' } });
+        return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json', 'set-cookie': 'nexora_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0' } });
       }
       if (resource === 'auth' && action === 'reactivate' && request.method === 'POST') { const body=await readBody(request); const account=await env.DB.prepare('SELECT * FROM users WHERE (email=? OR phone=?) AND deleted_at IS NOT NULL AND email IS NOT NULL').bind(body.identity||'',body.identity||'').first(); if(!account||!(await passwordVerify(body.password||'',account.password_hash)))return json({error:'invalid_credentials'},401); await env.DB.prepare('UPDATE users SET deleted_at=NULL,updated_at=? WHERE id=?').bind(now(),account.id).run(); return json({ok:true}); }
       if (resource === 'auth' && action === 'forgot-password' && request.method === 'POST') { const body=await readBody(request); const account=await env.DB.prepare('SELECT id FROM users WHERE email=? OR phone=?').bind(body.identity||'',body.identity||'').first(); if(account)await env.DB.prepare('INSERT INTO notifications (id,user_id,type,payload_json) VALUES (?,?,?,?)').bind(id(),account.id,'password_reset',JSON.stringify({requested_at:now()})).run(); return json({ok:true}); }

@@ -1,4 +1,4 @@
-import type { AuthUser } from '@retrynet/contracts';
+import type { AuthUser } from '@nexora/contracts';
 
 declare global {
   namespace Express {

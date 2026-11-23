@@ -10,9 +10,9 @@ app.enableShutdownHooks();
 app.use(cookieParser());
 app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true });
 app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('RetryNet API').setVersion('1.0').addCookieAuth('retrynet_token').build());
+const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('Nexora API').setVersion('1.0').addCookieAuth('nexora_token').build());
 SwaggerModule.setup('api/docs', app, document);
-app.getHttpAdapter().get('/api/health', (_req, response) => response.json({ ok: true, service: 'retrynet-nest-api' }));
+app.getHttpAdapter().get('/api/health', (_req, response) => response.json({ ok: true, service: 'nexora-nest-api' }));
 app.getHttpAdapter().get('/api/health/ready', async (_req, response) => { try {
     await app.get(DbService).ready();
     response.json({ ok: true, database: 'ready' });
