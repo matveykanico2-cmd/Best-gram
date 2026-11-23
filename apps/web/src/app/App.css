@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+:root {
+  --fb-blue: #1877f2;
+  --fb-bg: #f0f2f5;
+  --fb-card: #ffffff;
+  --fb-text: #1c1e21;
+  --fb-muted: #65676b;
+  --fb-line: #dddfe2;
+}
+
 * {
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -14,14 +23,76 @@ input, textarea {
 body,
 html {
     font-family: 'GeneralSans', sans-serif;
+    background: var(--fb-bg);
+    color: var(--fb-text);
+    min-width: 320px;
+}
+
+body { margin: 0; }
+
+/* Facebook-style chrome: white navigation, calm grey canvas, blue active state. */
+#root > div > nav {
+  background: rgba(255, 255, 255, .96) !important;
+  border-color: var(--fb-line) !important;
+  color: var(--fb-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+}
+#root > div > nav a { color: var(--fb-muted); }
+#root > div > nav a.text-white { color: var(--fb-text) !important; }
+#root > div > nav a:hover { background: #f0f2f5; color: var(--fb-text) !important; }
+#root > div > nav .text-purple-500,
+#root > div > nav .text-purple-600 { color: var(--fb-blue) !important; }
+#root > div > nav .bg-purple-500,
+#root > div > nav .bg-white { background: var(--fb-blue) !important; }
+#root > div > nav .border-neutral-800,
+#root > div > nav .border-neutral-800\/80,
+#root > div > nav .border-neutral-700 { border-color: var(--fb-line) !important; }
+
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid rgba(24, 119, 242, .28);
+  outline-offset: 2px;
+}
+
+/* Auth screens follow the same friendly, light Facebook-style language. */
+#root > div.min-h-screen.bg-neutral-950 {
+  background: var(--fb-bg) !important;
+}
+#root > div.min-h-screen.bg-neutral-950 > div {
+  background: var(--fb-card) !important;
+  border-color: var(--fb-line) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .10) !important;
+  color: var(--fb-text);
+}
+#root > div.min-h-screen.bg-neutral-950 > div > div:first-child {
+  background: linear-gradient(145deg, #eaf3ff, #ffffff) !important;
+  border-color: var(--fb-line) !important;
+}
+#root > div.min-h-screen.bg-neutral-950 input,
+#root > div.min-h-screen.bg-neutral-950 select,
+#root > div.min-h-screen.bg-neutral-950 fieldset {
+  background: #fff !important;
+  color: var(--fb-text) !important;
+  border-color: var(--fb-line) !important;
+}
+#root > div.min-h-screen.bg-neutral-950 h1,
+#root > div.min-h-screen.bg-neutral-950 h2,
+#root > div.min-h-screen.bg-neutral-950 h3,
+#root > div.min-h-screen.bg-neutral-950 label,
+#root > div.min-h-screen.bg-neutral-950 legend {
+  color: var(--fb-text) !important;
+}
+#root > div.min-h-screen.bg-neutral-950 button[type="submit"] {
+  background: var(--fb-blue) !important;
+  box-shadow: 0 6px 16px rgba(24, 119, 242, .25) !important;
 }
 
 @font-face {
   font-family: "GeneralSans";
   src:
-    url("../fonts/GeneralSans-Variable.woff2") format("woff2"),
-    url("../fonts/GeneralSans-Variable.woff") format("woff"),
-    url("../fonts/GeneralSans-Variable.ttf") format("truetype");
+    url("/fonts/GeneralSans-Variable.woff2") format("woff2"),
+    url("/fonts/GeneralSans-Variable.woff") format("woff"),
+    url("/fonts/GeneralSans-Variable.ttf") format("truetype");
   font-weight: 200 700;
   font-display: swap;
   font-style: normal;
@@ -30,9 +101,9 @@ html {
 @font-face {
   font-family: "GeneralSans-Italic";
   src:
-    url("../fonts/GeneralSans-VariableItalic.woff2") format("woff2"),
-    url("../fonts/GeneralSans-VariableItalic.woff") format("woff"),
-    url("../fonts/GeneralSans-VariableItalic.ttf") format("truetype");
+    url("/fonts/GeneralSans-VariableItalic.woff2") format("woff2"),
+    url("/fonts/GeneralSans-VariableItalic.woff") format("woff"),
+    url("/fonts/GeneralSans-VariableItalic.ttf") format("truetype");
   font-weight: 200 700;
   font-display: swap;
   font-style: italic;

@@ -14,10 +14,10 @@ const Home = () => {
   }, []);
 
   return (
-    <div className="pt-6 sm:pt-10 px-0 sm:px-4 max-w-lg mx-auto w-full">
+    <div className="pt-4 sm:pt-8 px-0 sm:px-4 max-w-[680px] mx-auto w-full">
       {/* Mobile Header (Hidden on Desktop) */}
       <header className="flex items-center justify-between mb-6 px-4 sm:hidden">
-        <h1 className="text-2xl tracking-tighter" style={{ fontFamily: 'var(--font-instagram, sans-serif)' }}>Bestgram</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-[#1877f2]">Bestgram</h1>
       </header>
       
       {loading ? (
@@ -35,18 +35,18 @@ const Home = () => {
           </button>
         </div>
       ) : posts && posts.length > 0 ? (
-        <div className="space-y-2 sm:space-y-6">
+        <div className="space-y-3 sm:space-y-5">
           {posts.map((post) => (
             <PostCard key={post._id} post={post} />
           ))}
         </div>
       ) : (
-        <div className="text-center py-24 bg-neutral-900/40 rounded-4xl border border-neutral-800/80 mx-4 sm:mx-0 shadow-lg">
-          <div className="w-20 h-20 rounded-full bg-linear-to-tr from-neutral-800 to-neutral-900 flex items-center justify-center mx-auto mb-6 shadow-inner border border-neutral-800">
-            <Camera className="w-8 h-8 text-neutral-500" />
+        <div className="text-center py-24 bg-white rounded-xl border border-[#dddfe2] mx-4 sm:mx-0 shadow-sm">
+          <div className="w-20 h-20 rounded-full bg-[#eaf3ff] flex items-center justify-center mx-auto mb-6 shadow-inner border border-[#d7e8ff]">
+            <Camera className="w-8 h-8 text-[#1877f2]" />
           </div>
-          <h3 className="text-xl font-semibold text-white/90 mb-2">No Posts Yet</h3>
-          <p className="text-neutral-500 text-sm max-w-50 mx-auto leading-relaxed">
+          <h3 className="text-xl font-semibold text-[#1c1e21] mb-2">No Posts Yet</h3>
+          <p className="text-[#65676b] text-sm max-w-50 mx-auto leading-relaxed">
             Follow people or create a post to see photos and videos here.
           </p>
         </div>

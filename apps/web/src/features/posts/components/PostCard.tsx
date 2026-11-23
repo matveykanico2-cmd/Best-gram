@@ -153,15 +153,15 @@ const PostCard = ({ post }) => {
   };
 
   return (
-    <article className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl overflow-hidden mb-6 shadow-xs group/card transition-all hover:bg-neutral-900/60 hover:border-neutral-700/80">
+    <article className="bg-white border border-[#dddfe2] rounded-xl overflow-hidden mb-5 shadow-sm group/card transition-all hover:shadow-md hover:border-[#cbd0d6]">
       {/* ═══ Header ═══ */}
       <div className="flex items-center justify-between p-4">
         <Link
           to={`/profile/${post.author?._id || post.author}`}
           className="flex items-center gap-3 group"
         >
-          <div className="w-10 h-10 rounded-full bg-linear-to-tr from-indigo-500 via-purple-500 to-pink-500 p-0.5 shadow-[0_0_12px_rgba(168,85,247,0.3)] transition-transform group-hover:scale-105">
-            <div className="w-full h-full bg-neutral-950 rounded-full overflow-hidden border border-neutral-950">
+          <div className="w-10 h-10 rounded-full bg-[#1877f2] p-0.5 transition-transform group-hover:scale-105">
+            <div className="w-full h-full bg-white rounded-full overflow-hidden border-2 border-white">
               <img
                 src={profileImg}
                 alt={`${authorName}'s avatar`}
@@ -170,17 +170,17 @@ const PostCard = ({ post }) => {
             </div>
           </div>
           <div>
-            <h3 className="font-semibold text-white/95 text-sm tracking-wide">
+            <h3 className="font-semibold text-[#1c1e21] text-sm tracking-wide">
               {authorName}
             </h3>
             {post.location && (
-              <p className="text-xs text-neutral-500 mt-0.5">
+              <p className="text-xs text-[#65676b] mt-0.5">
                 {post.location}
               </p>
             )}
           </div>
         </Link>
-        <button className="text-neutral-500 hover:text-white transition-colors p-2 rounded-full hover:bg-neutral-800 cursor-pointer">
+        <button className="text-[#65676b] hover:text-[#1c1e21] transition-colors p-2 rounded-full hover:bg-[#f0f2f5] cursor-pointer">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
@@ -188,7 +188,7 @@ const PostCard = ({ post }) => {
       {/* ═══ Media Viewer ═══ */}
       <div
         ref={mediaContainerRef}
-        className="relative bg-black aspect-4/5 sm:aspect-square overflow-hidden border-y border-neutral-800/50 sm:border-none select-none"
+        className="relative bg-black aspect-4/5 sm:aspect-square overflow-hidden border-y border-[#e4e6eb] sm:border-none select-none"
         onClick={handleDoubleTap}
       >
         {/* Media slides */}
@@ -355,7 +355,7 @@ const PostCard = ({ post }) => {
       </div>
 
       {/* ═══ Actions ═══ */}
-      <div className="p-4 pb-3">
+      <div className="p-4 pb-3 text-[#1c1e21]">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <motion.button
@@ -391,7 +391,7 @@ const PostCard = ({ post }) => {
             <Bookmark
               className={`w-6 h-6 transition-colors duration-300 ${isSaved
                   ? "text-white fill-white"
-                  : "text-neutral-400 hover:text-white"
+                  : "text-[#65676b] hover:text-[#1c1e21]"
                 }`}
             />
           </motion.button>
@@ -399,7 +399,7 @@ const PostCard = ({ post }) => {
 
         {/* Stats */}
         <div className="mb-2.5">
-          <p className="text-[13px] font-semibold text-white/95 tracking-wide">
+          <p className="text-[13px] font-semibold text-[#1c1e21] tracking-wide">
             {post.likesCount + (isLiked ? 1 : 0)}{" "}
             {post.likesCount + (isLiked ? 1 : 0) === 1 ? "like" : "likes"}
           </p>
@@ -412,13 +412,13 @@ const PostCard = ({ post }) => {
 
         {/* Comments Count */}
         {post.commentsCount > 0 && (
-          <button className="text-neutral-500 text-[13px] mb-2 hover:text-neutral-300 transition-colors cursor-pointer font-medium">
+          <button className="text-[#65676b] text-[13px] mb-2 hover:text-[#1c1e21] transition-colors cursor-pointer font-medium">
             View all {post.commentsCount} comments
           </button>
         )}
 
         {/* Timestamp */}
-        <p className="text-neutral-600 text-[10px] uppercase font-bold tracking-wider">
+        <p className="text-[#8a8d91] text-[10px] uppercase font-bold tracking-wider">
           {formatTime(post.createdAt)}
         </p>
       </div>
@@ -433,10 +433,10 @@ const CaptionText = ({ authorName, caption }) => {
 
   return (
     <div className="text-[13px] leading-relaxed mb-3">
-      <span className="font-semibold text-white/95 mr-2 tracking-wide">
+      <span className="font-semibold text-[#1c1e21] mr-2 tracking-wide">
         {authorName}
       </span>
-      <span className="text-neutral-300">
+      <span className="text-[#1c1e21]">
         {isLong && !expanded ? caption.slice(0, 100) + "..." : caption}
       </span>
       {isLong && (
