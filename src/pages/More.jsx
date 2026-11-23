@@ -25,6 +25,7 @@ const MoreOption = ({ icon: Icon, label, description, onClick, className }) => (
 export default function More() {
   const navigate = useNavigate()
   const { logout, isAdmin, subscribe, donatePayUrl } = useStore()
+  const shalterUrl = import.meta.env.VITE_SHALTER_URL || '/shalter'
 
   const handleLogout = () => {
     logout()
@@ -67,6 +68,11 @@ export default function More() {
           label="Реклама" 
           description="Создайте кампанию и оплатите размещение" 
         />
+      </div>
+
+      <div className="border-t border-border py-2">
+        <h2 className="px-4 py-3 text-secondary text-sm font-bold uppercase tracking-widest">Приложения</h2>
+        <MoreOption icon={ExternalLink} label="Открыть Shalter" description="Мессенджер Shalter связан с Bestgram" onClick={() => window.open(shalterUrl, '_blank', 'noopener,noreferrer')} />
       </div>
 
       <div className="border-t border-border py-2">
