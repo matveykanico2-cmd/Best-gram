@@ -1,4 +1,30 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://retrynet:retrynet@postgres:5432/retrynet
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  web:
+    build:
+      context: apps/web
+      dockerfile: dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_BACKEND_TARGET: http://api:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -10,6 +36,11 @@ services:
       - "5432:5432"
     volumes:
       - retrynet-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retrynet -d retrynet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   redis:
     image: redis:7-alpine
     restart: unless-stopped

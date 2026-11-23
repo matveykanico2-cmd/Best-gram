@@ -24,3 +24,13 @@ The migration is now present as a parallel production stack: `apps/web` (React/V
 - `npm run typecheck` — API TypeScript and legacy runtime checks pass.
 - `npm run test:stack` — API schema test and legacy smoke test pass.
 - `apps/api/drizzle/0000_initial.sql` — PostgreSQL tables, foreign keys and indexes.
+- Social API: post ownership edits/deletes, reactions, comments/replies, shares, saves, follows, notifications, blocks and reports.
+- Messaging API: authenticated REST access to chat users/history plus Socket.IO compatibility events and call/WebRTC signaling.
+- Feature API: communities, community membership, videos, playlists, marketplace listings and media upload/download (25 MB limit and MIME filter).
+- Admin API: role-protected stats, user listing and verification actions; global throttling is enabled.
+
+## Remaining acceptance limitations
+
+- Production PostgreSQL, Redis, S3 and TURN must be supplied through deployment environment variables/services; the repository includes Docker Compose and the reproducible SQL migration but cannot verify external infrastructure without those services running.
+- WebRTC signaling and call history are implemented; a real two-device media call still needs an operator test with a reachable STUN/TURN service.
+- The preserved legacy Worker frontend remains available alongside the new React/Nest stack for backward compatibility.

@@ -19,6 +19,9 @@ let MessagesGateway = class MessagesGateway {
         socket.join(`conversation:${room}`); return { ok: true }; }
     modernMessage(socket, message) { const event = { ...message, senderSocket: socket.id, sentAt: new Date().toISOString() }; this.server.to(`conversation:${message.conversationId}`).emit('chat:message', event); return event; }
     legacyMessage(socket, message) { const event = { ...message, _id: message._id || crypto.randomUUID(), createdAt: message.createdAt || new Date().toISOString() }; this.server.emit('message_sent', event); this.server.emit('receive_message', event); return event; }
+    callJoin(socket, body) { socket.join(`call:${body.callId}`); return { ok: true }; }
+    callSignal(socket, body) { socket.to(`call:${body.callId}`).emit('call:signal', { ...body, from: socket.id }); return { ok: true }; }
+    callEnd(socket, body) { socket.to(`call:${body.callId}`).emit('call:end', body); return { ok: true }; }
 };
 __decorate([
     WebSocketServer(),
@@ -48,6 +51,30 @@ __decorate([
     __metadata("design:paramtypes", [Socket, Object]),
     __metadata("design:returntype", void 0)
 ], MessagesGateway.prototype, "legacyMessage", null);
+__decorate([
+    SubscribeMessage('call:join'),
+    __param(0, ConnectedSocket()),
+    __param(1, MessageBody()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Socket, Object]),
+    __metadata("design:returntype", void 0)
+], MessagesGateway.prototype, "callJoin", null);
+__decorate([
+    SubscribeMessage('call:signal'),
+    __param(0, ConnectedSocket()),
+    __param(1, MessageBody()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Socket, Object]),
+    __metadata("design:returntype", void 0)
+], MessagesGateway.prototype, "callSignal", null);
+__decorate([
+    SubscribeMessage('call:end'),
+    __param(0, ConnectedSocket()),
+    __param(1, MessageBody()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Socket, Object]),
+    __metadata("design:returntype", void 0)
+], MessagesGateway.prototype, "callEnd", null);
 MessagesGateway = __decorate([
     WebSocketGateway({ cors: { origin: true, credentials: true } })
 ], MessagesGateway);

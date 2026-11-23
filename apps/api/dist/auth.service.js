@@ -11,7 +11,7 @@ import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/co
 import { eq, or } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { DbService } from './db/db.service.js';
 import { users, sessions } from './db/schema.js';
 let AuthService = class AuthService {
@@ -19,11 +19,17 @@ let AuthService = class AuthService {
     constructor(db) {
         this.db = db;
     }
-    safe(user) { return { id: user.id, email: user.email, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl }; }
+    safe(user) { return { id: user.id, email: user.email, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl, role: user.role, emailVerified: Boolean(user.emailVerifiedAt) }; }
     async register(input) { const email = input.email?.trim().toLowerCase() || null; const where = email ? or(eq(users.username, input.username.toLowerCase()), eq(users.email, email)) : eq(users.username, input.username.toLowerCase()); const existing = await this.db.db.select().from(users).where(where).limit(1); if (existing.length)
-        throw new ConflictException('account_already_exists'); const [user] = await this.db.db.insert(users).values({ email, username: input.username.trim().toLowerCase(), displayName: input.displayName.trim(), passwordHash: await bcrypt.hash(input.password, 12) }).returning(); return this.safe(user); }
-    async login(identity, password) { const normalized = identity.trim().toLowerCase(); const rows = await this.db.db.select().from(users).where(or(eq(users.email, normalized), eq(users.username, normalized))).limit(1); const user = rows[0]; if (!user || !(await bcrypt.compare(password, user.passwordHash)))
+        throw new ConflictException('account_already_exists'); const [user] = await this.db.db.insert(users).values({ email, username: input.username.trim().toLowerCase(), displayName: input.displayName.trim(), passwordHash: await bcrypt.hash(input.password, 12), verificationToken: email ? randomBytes(24).toString('hex') : null }).returning(); return this.safe(user); }
+    async login(identity, password) { const normalized = identity.trim().toLowerCase(); const rows = await this.db.db.select().from(users).where(or(eq(users.email, normalized), eq(users.username, normalized))).limit(1); const user = rows[0]; if (!user || user.status !== 'active' || !(await bcrypt.compare(password, user.passwordHash)))
         throw new UnauthorizedException('invalid_credentials'); const raw = randomUUID(); await this.db.db.insert(sessions).values({ userId: user.id, tokenHash: createHash('sha256').update(raw).digest('hex'), expiresAt: new Date(Date.now() + 30 * 86400000) }); return { user: this.safe(user), token: jwt.sign({ sub: user.id, session: raw }, process.env.JWT_SECRET || 'change-me', { expiresIn: '30d' }) }; }
+    async verifyEmail(token) { const [user] = await this.db.db.update(users).set({ emailVerifiedAt: new Date(), verificationToken: null }).where(eq(users.verificationToken, token)).returning(); if (!user)
+        throw new UnauthorizedException('invalid_verification_token'); return this.safe(user); }
+    async requestPasswordReset(identity) { const [user] = await this.db.db.select().from(users).where(or(eq(users.email, identity.trim().toLowerCase()), eq(users.username, identity.trim().toLowerCase()))).limit(1); if (!user)
+        return { ok: true }; const token = randomBytes(32).toString('hex'); await this.db.db.update(users).set({ resetToken: token, resetExpiresAt: new Date(Date.now() + 30 * 60 * 1000) }).where(eq(users.id, user.id)); return { ok: true, token: process.env.NODE_ENV === 'production' ? undefined : token }; }
+    async resetPassword(token, password) { const [user] = await this.db.db.select().from(users).where(eq(users.resetToken, token)).limit(1); if (!user || !user.resetExpiresAt || user.resetExpiresAt < new Date())
+        throw new UnauthorizedException('invalid_reset_token'); await this.db.db.update(users).set({ passwordHash: await bcrypt.hash(password, 12), resetToken: null, resetExpiresAt: null }).where(eq(users.id, user.id)); await this.db.db.delete(sessions).where(eq(sessions.userId, user.id)); return { ok: true }; }
     async fromToken(token) { if (!token)
         throw new UnauthorizedException(); try {
         const payload = jwt.verify(token, process.env.JWT_SECRET || 'change-me');

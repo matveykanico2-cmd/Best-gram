@@ -12,21 +12,25 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
+import { LoginDto, RegisterDto } from './auth.dto.js';
 let AuthController = class AuthController {
     auth;
     constructor(auth) {
         this.auth = auth;
     }
     register(body) { return this.auth.register({ email: body.email, username: body.username, displayName: body.displayName || body.fullName || body.username, password: body.password }); }
-    async login(body, response) { const result = await this.auth.login(body.identity || body.email || body.username || '', body.password); response.cookie('retrynet_token', result.token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 86400000 }); return result.user; }
+    async login(body, response) { const result = await this.auth.login(body.email || body.username || '', body.password); response.cookie('retrynet_token', result.token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 86400000 }); return result.user; }
     async me(request) { return this.auth.fromToken(request.cookies?.retrynet_token || request.headers.authorization?.replace('Bearer ', '')); }
     logout(response) { response.clearCookie('retrynet_token'); return { ok: true }; }
+    verifyEmail(body) { return this.auth.verifyEmail(body.token); }
+    forgotPassword(body) { return this.auth.requestPasswordReset(body.identity); }
+    resetPassword(body) { return this.auth.resetPassword(body.token, body.password); }
 };
 __decorate([
     Post('register'),
     __param(0, Body()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [RegisterDto]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "register", null);
 __decorate([
@@ -34,7 +38,7 @@ __decorate([
     __param(0, Body()),
     __param(1, Res({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [LoginDto, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
@@ -51,6 +55,27 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "logout", null);
+__decorate([
+    Post('verify-email'),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "verifyEmail", null);
+__decorate([
+    Post('forgot-password'),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "forgotPassword", null);
+__decorate([
+    Post('reset-password'),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "resetPassword", null);
 AuthController = __decorate([
     Controller('api/auth'),
     __metadata("design:paramtypes", [AuthService])
