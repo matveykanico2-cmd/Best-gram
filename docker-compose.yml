@@ -1,4 +1,18 @@
 services:
+  proxy:
+    image: caddy:2-alpine
+    profiles: ["online"]
+    restart: unless-stopped
+    environment:
+      RETRYNET_DOMAIN: ${RETRYNET_DOMAIN:?set RETRYNET_DOMAIN for online profile}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - retrynet-caddy:/data
+    depends_on:
+      - web
   api:
     build:
       context: .
@@ -64,3 +78,4 @@ volumes:
   retrynet-postgres:
   retrynet-redis:
   retrynet-minio:
+  retrynet-caddy:

@@ -32,12 +32,12 @@ npm run db:migrate
 Для online-режима:
 
 ```bash
-docker compose up -d --build
+RETRYNET_DOMAIN=example.com docker compose --profile online up -d --build
 npm run db:migrate:pg
 npm run dev
 ```
 
-Compose поднимает Nest API, React frontend, PostgreSQL, Redis и MinIO.
+Compose поднимает Nest API, React frontend, PostgreSQL, Redis и MinIO. Профиль `online` добавляет Caddy с автоматическим HTTPS через `RETRYNET_DOMAIN`.
 
 Frontend полностью переведён на `.ts/.tsx` и содержит отдельные страницы ленты, профиля, сообщений, сообществ, звонков, видео, marketplace, настроек и админки.
 

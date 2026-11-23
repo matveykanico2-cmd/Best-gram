@@ -36,3 +36,5 @@ The migration is now present as a parallel production stack: `apps/web` (React/V
 - The preserved legacy Worker frontend remains available alongside the new React/Nest stack for backward compatibility.
 - `apps/web/src` is now fully `.ts/.tsx`; Vite, React Query, route pages and the client entrypoint no longer use JavaScript/JSX source files.
 - New online pages are wired to API-backed routes: communities, marketplace, calls, videos and settings.
+- Realtime follows the Shalter2 pattern: authenticated Socket.IO handshake, presence snapshots, reconnect-compatible events, typing indicators and targeted message delivery.
+- Optional online profile adds Caddy HTTPS reverse proxy under `infrastructure/proxy/Caddyfile`.
