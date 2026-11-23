@@ -1,0 +1,77 @@
+import type { translateBody } from "@nexora/shared/schemas/integrations";
+import type { deleteResult, messageEnvelope, readersResult, sendResult, summaryResult } from "@nexora/shared/schemas/messages";
+import type { paidDeleteBody, starsInfoBody } from "@nexora/shared/schemas/stars";
+import type { z } from "zod";
+
+import type { Attachment, Message } from "@/entities/message";
+
+import { http } from "@/shared/api";
+
+type Envelope = z.infer<typeof messageEnvelope>;
+
+const messagePath = (chatId: string, id: string) => `/api/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(id)}`;
+
+export const editMessage = (chatId: string, id: string, text: string) => http.patch<Envelope>(messagePath(chatId, id), { text });
+
+/** forEveryone: false — убрать только из своей переписки. */
+export const deleteMessage = (chatId: string, id: string, forEveryone: boolean) =>
+  http.delete<z.infer<typeof deleteResult>>(messagePath(chatId, id), { forEveryone });
+
+export const removeMessageAttachments = (chatId: string, id: string, indexes: readonly number[]) =>
+  http.post<Envelope>(`${messagePath(chatId, id)}/attachments/remove`, { indexes });
+
+/** Поставить или снять реакцию (повтор той же снимает). */
+export const reactToMessage = (chatId: string, id: string, emoji: string, requestId?: string) => http.post<Envelope>(`${messagePath(chatId, id)}/react`, {
+  emoji,
+  requestId,
+});
+
+export const pinMessage = (chatId: string, id: string, pinned: boolean) => http.post<Envelope>(`${messagePath(chatId, id)}/pin`, { pinned });
+
+export type ForwardOrigin = { chatId: string; chatTitle: string; senderName: string };
+
+/**
+ * Переслать в чат — как handleForward в public/js/views/chatView.js: копия текста и
+ * вложений с подписью, откуда она (голоса опроса не переносятся).
+ */
+export function forwardMessage(targetChatId: string, m: Message, origin: ForwardOrigin, hideAuthor: boolean) {
+  const attachments = (m.attachments ?? []).map((a) => {
+    const att = a as { kind?: string; meta?: Record<string, unknown> };
+    return att.kind === "poll" ? { ...att, meta: { ...att.meta, voterIds: [], votes: [] } } : a;
+  });
+  return http.post<z.infer<typeof sendResult>>(`/api/chats/${encodeURIComponent(targetChatId)}/messages`, {
+    text: m.text,
+    attachments,
+    ...(m.sticker ? { sticker: m.sticker } : {}),
+    ...(m.customEmoji ? { customEmoji: m.customEmoji } : {}),
+    forwardedFrom: { messageId: m.id, hideAuthor, chatId: origin.chatId, chatTitle: origin.chatTitle, senderId: m.senderId, senderName: origin.senderName },
+  });
+}
+
+export const votePoll = (chatId: string, id: string, optionIndex: number, questionIndex = 0) => http.post<Envelope>(`${messagePath(chatId, id)}/vote`, { optionIndex, ...(questionIndex > 0 ? { questionIndex } : {}) });
+
+export const retractVote = (chatId: string, id: string, questionIndex = 0) => http.delete<Envelope>(`${messagePath(chatId, id)}/vote`, questionIndex > 0 ? { questionIndex } : undefined);
+
+export const closePoll = (chatId: string, id: string) => http.post<Envelope>(`${messagePath(chatId, id)}/poll/close`);
+export const openPoll = (chatId: string, id: string) => http.post<Envelope>(`${messagePath(chatId, id)}/poll/open`);
+
+/** Отметить пункт ({ itemId }) или дописать пункты ({ add }). */
+export const updateChecklist = (chatId: string, id: string, body: { itemId: number } | { add: string[] }) => http.post<Envelope>(`${messagePath(chatId, id)}/checklist`, body);
+
+export const unlockPaidMedia = (chatId: string, id: string) => http.post<{ attachments: Attachment[]; balance: number }>(`${messagePath(chatId, id)}/unlock`);
+
+/** Кто и во сколько прочитал — только автору, в группе. */
+export const messageReaders = (chatId: string, id: string) => http.get<z.infer<typeof readersResult>>(`${messagePath(chatId, id)}/readers`);
+
+export const summarizeMessage = (chatId: string, id: string) => http.get<z.infer<typeof summaryResult>>(`${messagePath(chatId, id)}/summary`);
+
+/** Удалить сообщение собеседника в личке у обоих — за звёзды. */
+export const paidDeleteMessage = (id: string) => http.post<z.infer<typeof paidDeleteBody>>(`/api/stars/delete/${encodeURIComponent(id)}`);
+
+export const starsInfo = () => http.get<z.infer<typeof starsInfoBody>>("/api/stars");
+
+export const translateText = (text: string, target: string) => http.post<z.infer<typeof translateBody>>("/api/translate", { text, target });
+
+export const saveTranslateLanguage = (translateLanguage: string) => http.patch<unknown>("/api/settings", { translateLanguage });
+
+export const saveDraft = (chatId: string, text: string) => http.post<unknown>(`/api/chats/${encodeURIComponent(chatId)}/draft`, { text });

@@ -1,0 +1,185 @@
+/* Боковая панель ветки (.profile-panel и .thread-* в public/styles/components.css). */
+.overlay {
+  position: fixed;
+  inset: 0;
+  /* Основной экран приложения — отдельный stacking context с z-index: 100.
+     Комментарии должны быть поверх него, иначе лента канала наезжает на панель. */
+  /* Ниже профиля (120), но выше основного чата (100): открытый профиль
+     должен перекрывать комментарии, а комментарии — сам чат канала. */
+  z-index: 110;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  display: flex;
+  width: min(440px, 100vw);
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Комментарии канала — отдельный экран-чатйк, а не маленькая карточка сбоку. */
+.channelCommentsPanel {
+  width: 100vw;
+  box-shadow: none;
+}
+
+/* Выезд только при открытии: после него анимации нет — пересчёт стилей её не повторит. */
+.entering {
+  animation: panel-in 0.22s ease both;
+}
+
+@keyframes panel-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.back,
+.close {
+  display: flex;
+  padding: 7px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.back:hover,
+.close:hover {
+  background: var(--color-surface-alt);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--color-chat-bg);
+}
+
+/* В комментариях канала сообщения должны доходить до краёв панели. Отступы
+   обычной ветки оставляем: там они отделяют ответы от фона чата. */
+.commentsBody {
+  padding: 8px;
+  gap: 8px;
+}
+
+/* Длинные ссылки/файлы не должны расширять панель комментариев вправо. */
+.body > * {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.root {
+  box-sizing: border-box;
+  padding-inline: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+/* Внутренние сообщения не должны липнуть к рамке панели: свои чуть отступают
+   справа, чужие — минимально слева. */
+.mineReply {
+  box-sizing: border-box;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  margin: 0;
+  padding-right: 5px;
+}
+
+.otherReply {
+  box-sizing: border-box;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  margin: 0;
+  padding-left: 5px;
+}
+
+.label,
+.empty {
+  align-self: center;
+  margin: 10px 0 6px;
+  padding: 3px 10px;
+  border-radius: 16px;
+  background: var(--color-date-pill);
+  color: #fff;
+  font-size: 13px;
+}
+
+.spinner {
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin: 12px;
+  border: 2.5px solid color-mix(in srgb, #fff 40%, transparent);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Поле ответа — общий Composer; по краю панели, как composer-slot в ветке старого клиента. */
+.composer {
+  padding: 10px 8px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 560px) {
+  .panel {
+    width: 100vw;
+  }
+
+  .body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .composer {
+    padding: 10px 8px env(safe-area-inset-bottom, 0px);
+  }
+}

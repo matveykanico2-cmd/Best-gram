@@ -1,0 +1,55 @@
+.routeLoader {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  overflow: hidden;
+  background: var(--panel-bg);
+}
+
+.routeSkeleton {
+  display: grid;
+  gap: 12px;
+  width: min(520px, calc(100% - 32px));
+  margin: 48px auto 0;
+}
+
+.routeSkeleton i {
+  display: block;
+  height: 14px;
+  border-radius: 8px;
+  background: linear-gradient(100deg, var(--color-surface-alt) 20%, color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-alt)) 45%, var(--color-surface-alt) 70%);
+  background-size: 240% 100%;
+  animation: route-skeleton 1.35s ease-in-out infinite;
+}
+
+.routeSkeleton i:nth-child(1) { width: 58%; }
+.routeSkeleton i:nth-child(2) { width: 88%; }
+.routeSkeleton i:nth-child(3) { width: 72%; }
+
+@keyframes route-skeleton { to { background-position: -140% 0; } }
+
+@media (prefers-reduced-motion: reduce) { .routeSkeleton i { animation: none; } }
+
+.routeLoader span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 55%, transparent);
+  animation: route-progress 1.15s ease-in-out infinite;
+}
+
+@keyframes route-progress {
+  0% { transform: translateX(-120%); }
+  55% { transform: translateX(210%); }
+  100% { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeLoader span { animation: none; left: 0; width: 100%; }
+}

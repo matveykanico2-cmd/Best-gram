@@ -1,0 +1,359 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vw, 24px);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.viewer {
+  box-sizing: border-box;
+  display: flex;
+  width: min(100%, 1000px);
+  height: min(100%, calc(100vh - clamp(20px, 4vw, 48px)));
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.head {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: min(480px, calc(100vw - 32px));
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+}
+
+.author {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.authorName {
+  font-weight: 600;
+}
+
+.authorTime,
+.counter {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.iconButton {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: #19202b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.iconButton:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(70, 84, 105, 0.86);
+  transform: translateY(-1px);
+}
+
+.iconButton:active {
+  transform: scale(0.95);
+}
+
+.original {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #19202b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+  color: #fff;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.thumbs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: min(640px, calc(100vw - 32px));
+  margin: 0 auto;
+  overflow-x: auto;
+  padding: 3px;
+  scrollbar-width: none;
+}
+
+.thumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.thumbButton {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background: #121a24;
+  opacity: 0.72;
+  cursor: pointer;
+}
+
+.thumbButton:hover,
+.thumbActive {
+  border-color: #fff;
+  opacity: 1;
+}
+
+.thumbButton :is(img, video) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbVideo {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: #121a24 center / cover no-repeat;
+  color: #fff;
+}
+
+.thumbPlay {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 64%);
+  color: #fff;
+}
+
+.stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.media {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  background: #000;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform 0.12s ease-out;
+  user-select: none;
+  will-change: transform;
+}
+
+.zoomed {
+  border-radius: 0;
+  cursor: grab;
+  transition: none;
+}
+
+.blur {
+  filter: blur(8px);
+}
+
+.spinner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fail {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.failActions {
+  display: flex;
+  gap: 8px;
+}
+
+.failActions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  cursor: pointer;
+}
+
+.failActions .secondary {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.caption {
+  max-width: min(640px, 100%);
+  max-height: 20vh;
+  margin: 0 auto;
+  overflow: auto;
+  color: #fff;
+  font-size: 14px;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.nav {
+  position: absolute;
+  top: 50%;
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #19202b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+  color: #fff;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.navBar {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.navBar .nav { pointer-events: auto; }
+
+.nav:hover:not(:disabled) {
+  background: rgba(70, 84, 105, 0.86);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.prev {
+  left: 12px;
+}
+
+.next {
+  right: 12px;
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    align-items: stretch;
+    padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(84px, calc(72px + env(safe-area-inset-bottom, 0px))) max(8px, env(safe-area-inset-left, 0px));
+  }
+
+  .viewer {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .head {
+    min-width: 0;
+    width: 100%;
+    min-height: 48px;
+    flex: 0 0 auto;
+    padding-top: 2px;
+  }
+
+  .head .iconButton,
+  .head .original { width: 42px; height: 42px; flex: 0 0 42px; }
+
+  .original span {
+    display: none;
+  }
+
+  .original {
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .thumbButton {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+  }
+
+  .navBar {
+    position: fixed;
+    inset: auto 0 max(12px, env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    height: 52px;
+    pointer-events: none;
+  }
+
+  .navBar .nav {
+    position: static;
+    width: 48px;
+    height: 48px;
+    transform: none;
+  }
+
+  .navBar .nav:hover:not(:disabled) { transform: scale(1.04); }
+}

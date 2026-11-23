@@ -1,0 +1,879 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { memo, type Ref, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import { type CallKind, useStartCall } from "@/features/call";
+import { SponsoredMessage } from "@/features/chat-ads";
+import {
+  canPin,
+  isProtectedChat,
+  MessageMenus,
+  SelectionBar,
+  type Summaries,
+  useMessageActions,
+  useMessageMenu,
+  useMessageSelection,
+  useSummaries,
+} from "@/features/message-actions";
+import { closeStickerPack, Composer, findBuiltinPack, openBuiltinStickerPack, openStickerPack, openStickerPreview, outgoingSticker, type StickerPack, StickerPackDetail, stickerPackQueries, useSendMessage, useStickerView } from "@/features/send-message";
+import { useSuggestedPhoto } from "@/features/suggested-photo";
+import { ThreadPanel, type ThreadSource } from "@/features/thread";
+
+import { chatCache, type ChatMember, type ChatSummary, isChatAdmin, isChatModerator, type Typing } from "@/entities/chat";
+import {
+  type AttachmentActions,
+  type FeedMessage,
+  isReadByOthers,
+  loadOlderHistory,
+  type Message,
+  MessageBubble,
+  messageQueries,
+  type MessageSender,
+  paidMediaQuery,
+  type ReplyTarget,
+  timeLabel,
+  type TopicFilter,
+} from "@/entities/message";
+import { type ReportInfo, ReportMessage } from "@/entities/report";
+import { isServerModerator, type SelfUser } from "@/entities/session";
+import { openStoryViewer, type StoryGroup } from "@/entities/story";
+
+import { http } from "@/shared/api";
+import { DRAWN_STICKERS, renderSticker, type Sticker } from "@/shared/lib/anim";
+
+const HELLO_STICKER: Sticker = DRAWN_STICKERS.find((s) => s.id === "art_hello") ?? { emoji: "👋", name: "Привет", scene: "hello" };
+
+
+import { errorText } from "@/shared/lib/error-text";
+import { useTimeFormat } from "@/shared/lib/time-format";
+import { DomNode, Icon, MediaViewer, type ViewerItem } from "@/shared/ui";
+
+import { type FeedRow, feedRows, lastEditable } from "../lib/feed-rows";
+import { buildGallery, galleryIndex } from "../lib/gallery";
+import { useEntrance } from "../model/use-entrance";
+import { useHistorySync } from "../model/use-history-sync";
+
+import { BotThinking } from "./bot-thinking";
+import { ChatCalendar } from "./chat-calendar";
+import styles from "./message-feed.module.css";
+import { PinnedBar } from "./pinned-bar";
+import { PostView } from "./post-view";
+
+/** Примерная высота строки; точную меряет виртуализатор. */
+const ROW_ESTIMATE = 56;
+/** Ближе этого к низу — лента «прилипла» и держит низ при новых сообщениях. */
+const STICK_PX = 80;
+/** Ближе этого к верху — подгружаем историю раньше. */
+const LOAD_OLDER_PX = 200;
+const HIGHLIGHT_MS = 1600;
+/** Сколько страниц старее листать в поисках сообщения — как jumpTo в chatView.js. */
+const JUMP_MAX_PAGES = 20;
+
+// Сохраняем позицию открытого чата между переходами назад/вперёд. Это особенно
+// заметно на телефоне: возврат из профиля или поиска должен вернуть к тому же
+// сообщению, как в Telegram, а не каждый раз к низу ленты.
+const scrollPositions = new Map<string, number>();
+
+export type MessageFeedHandle = {
+  /** Прокрутить вниз и держать низ — после своей отправки. */
+  stickToBottom: () => void;
+  /** Последнее своё сообщение, которое можно править (стрелка вверх в поле ввода). */
+  lastEditable: () => Message | null;
+  /** К сообщению с подсветкой; нет в ленте — подгружает историю старее (поиск по чату). */
+  jumpTo: (id: string) => void;
+};
+
+type Props = {
+  chat: ChatSummary;
+  members: readonly ChatMember[];
+  me: SelfUser;
+  /** Кто печатает — для «Думает…» бота. */
+  typing: Typing;
+  /** quote — выделенная часть текста для цитаты. */
+  onReply?: (m: Message, quote?: string) => void;
+  onEdit?: (m: Message) => void;
+  onDeletePending?: (m: Message) => void;
+  /** Тема группы: лента только её сообщений. */
+  topic?: TopicFilter;
+  ref?: Ref<MessageFeedHandle>;
+};
+
+/** Лента открытого чата: история с подгрузкой вверх, живые события, виртуализация. */
+const noop = () => {};
+
+export function MessageFeed({ chat, members, me, typing, onReply, onEdit, topic, ref }: Props) {
+  const meId = me.id;
+  // Сменили 12/24 часа — пузыри перерисуются с новым временем.
+  useTimeFormat();
+  const client = useQueryClient();
+  const menu = useMessageMenu();
+  const actions = useMessageActions(chat, me);
+  const selection = useMessageSelection();
+  const summaries = useSummaries(chat.id);
+  useHistorySync(chat.id, meId);
+  const history = useQuery(messageQueries.history(chat.id, topic));
+  const stickerView = useStickerView();
+  const openPackBySticker = (sticker: Sticker) => {
+    // Встроенные стикеры уходят без packId — их пак ищем по рисунку; стикер без пака (старые
+    // сообщения) — только крупно на своём фоне.
+    if (!sticker.packId) {
+      const builtin = findBuiltinPack(sticker);
+      return builtin ? openBuiltinStickerPack(builtin, sticker) : openStickerPreview(sticker);
+    }
+    const packId = sticker.packId;
+    void (async () => {
+      try {
+        const res = await http.get<{ pack: StickerPack }>(`/api/stickers/packs/${encodeURIComponent(packId)}`);
+        if (res?.pack) openStickerPack(res.pack, sticker);
+        else openStickerPreview(sticker, true);
+      } catch {
+        // Пак удалён или ссылка неверная — «Стикерпак не найден».
+        openStickerPreview(sticker, true);
+      }
+    })();
+  };
+  const sendOne = useSendMessage(chat.id, meId, chat.type === "channel", topic);
+  const sendSticker = useCallback((s: Sticker) => {
+    void sendOne("", null, [], outgoingSticker(s)).catch(() => {});
+    closeStickerPack();
+  }, [sendOne]);
+  const refreshPacks = useCallback(() => {
+    void client.invalidateQueries({ queryKey: stickerPackQueries.baseKey });
+    closeStickerPack();
+  }, [client]);
+  // Ветка ответов в группе или комментарии к посту канала.
+  const [thread, setThread] = useState<ThreadSource | null>(null);
+  const openThread = (m: Message) => setThread({ kind: "thread", chatId: chat.id, root: m });
+  // Перезвонить из записи о звонке — в группе снова всем, как placeCall в chatView.js.
+  const startCall = useStartCall(me);
+  const applySuggestedPhoto = useSuggestedPhoto();
+  const callBack = (kind: CallKind) => void startCall.call(chat.id, kind, { ringAll: chat.type === "group" });
+  const data = history.data;
+
+  // Каждый запрос истории отмечает чат прочитанным — счётчик в списке гасим сразу.
+  useEffect(() => {
+    if (history.dataUpdatedAt) chatCache.markRead(client, chat.id);
+  }, [client, chat.id, history.dataUpdatedAt]);
+
+  // Плашка «Непрочитанные» — по первому ответу после открытия и до ухода из чата.
+  const [unreadId, setUnreadId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (unreadId === undefined && history.isFetchedAfterMount && data) setUnreadId(data.firstUnreadId);
+  }, [data, history.isFetchedAfterMount, unreadId]);
+
+  const [calendarDay, setCalendarDay] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    const update = () => setCalendarDay(new Date().toDateString());
+    // Дата нужна только для разделителей сообщений. Обновление каждую секунду
+    // заставляло весь виртуализированный чат пересчитываться без причины.
+    const schedule = () => {
+      const now = new Date();
+      const nextDay = new Date(now);
+      nextDay.setHours(24, 0, 0, 50);
+      return window.setTimeout(() => {
+        update();
+        timer = schedule();
+      }, Math.max(1000, nextDay.getTime() - now.getTime()));
+    };
+    let timer = schedule();
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+  const rows = useMemo(() => feedRows(data?.messages ?? [], unreadId ?? null, new Date(calendarDay), meId), [data?.messages, unreadId, calendarDay, meId]);
+  const entrance = useEntrance(chat.id, data?.messages, meId);
+  const senders = useSenders(chat, members);
+  const attachmentActions = useMemo<AttachmentActions>(
+    () => ({
+      poll: {
+        onVote: actions.vote,
+        onRetract: actions.retractVote,
+        onClose: actions.closePoll,
+        onOpen: actions.openPoll,
+        // Чужой опрос останавливают админы и модераторы группы или канала.
+        canCloseOthers: chat.type !== "dm" && (isChatAdmin(chat, meId) || isChatModerator(chat, meId)),
+      },
+      checklist: { onToggle: actions.toggleChecklist, onAdd: actions.addChecklistItems },
+      onUnlockPaid: actions.unlockPaid,
+    }),
+    [actions, chat, meId]
+  );
+  const nameOf = useCallback((userId: string) => senders({ senderId: userId })?.name ?? "участник", [senders]);
+  const userOf = useCallback((userId: string) => senders({ senderId: userId }), [senders]);
+  const knownName = useCallback((userId: string) => senders({ senderId: userId })?.name ?? null, [senders]);
+  // Кто поставил реакцию на пост канала, видят только его админы и модераторы.
+  const canViewReactionDetails = chat.type !== "channel" || isChatAdmin(chat, meId) || isChatModerator(chat, meId);
+  const showsBotThinking = !!typing && (!!members.find((u) => u.id === typing.userId)?.isBot || typing.userId === "bot_nexora_ai" || typing.userId === "bot_support");
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollPositionKey = `${chat.id}:${topic ?? "all"}`;
+  const restoredPosition = useRef(false);
+  const activeScrollKey = useRef<string | null>(null);
+  const stuck = useRef(true);
+  const fromBottom = useRef(0);
+  const [atBottom, setAtBottom] = useState(true);
+  // Сколько чужих сообщений пришло, пока лента не внизу, — число на кнопке «вниз» (missedWhileUp).
+  const [leftAt, setLeftAt] = useState<string | null>(null);
+  const lastId = data?.messages.at(-1)?.id ?? null;
+  useEffect(() => {
+    if (atBottom && leftAt) setLeftAt(null);
+    else if (!atBottom && !leftAt && lastId) setLeftAt(lastId);
+  }, [atBottom, lastId, leftAt]);
+  const missed = useMemo(() => {
+    const list = data?.messages ?? [];
+    const from = leftAt ? list.findIndex((m) => m.id === leftAt) : -1;
+    return from < 0 ? 0 : list.slice(from + 1).filter((m) => m.senderId !== meId && m.type !== "system").length;
+  }, [data?.messages, leftAt, meId]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- виртуализатор сам следит за прокруткой
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_ESTIMATE,
+    // Небольшой запас сглаживает быстрый свайп: следующий экран уже измерен,
+    // но в DOM не держатся десятки тяжёлых пузырьков с медиа и реакциями.
+    // На телефонах лишние тяжёлые пузырьки (медиа, реакции, превью) в DOM
+    // заметно тормозят быстрый свайп. Держим небольшой запас, десктопу оставляем больше.
+    overscan: typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 3 : 6,
+    getItemKey: (i) => rows[i]!.key,
+    // При prepend старой страницы сохраняем первую видимую строку и её смещение.
+    // Виртуализатор также компенсирует уточнение высоты динамических пузырей, поэтому
+    // лента не делает отдельный скачок после того, как медиа и Markdown измерились.
+    anchorTo: "end",
+  });
+  const totalSize = virtualizer.getTotalSize();
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    stickToBottom: () => {
+      stuck.current = true;
+      setAtBottom(true);
+      scrollToBottom();
+    },
+    lastEditable: () => lastEditable(data?.messages ?? [], meId),
+    jumpTo,
+  }));
+
+  // Прилипшая лента держит низ, пока сообщения добавляются и меряются; подгруженная
+  // сверху история не сдвигает то, что сейчас на экране.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // The feed component stays mounted while the route changes between chats. Reset
+    // the per-chat state before applying the new history; otherwise the old chat's
+    // `restoredPosition` and `stuck` flags can leave the new chat somewhere in the
+    // middle instead of at its latest message.
+    const enteredChat = activeScrollKey.current !== scrollPositionKey;
+    if (enteredChat) {
+      activeScrollKey.current = scrollPositionKey;
+      restoredPosition.current = false;
+      stuck.current = true;
+      fromBottom.current = 0;
+      setAtBottom(true);
+      el.scrollTop = 0;
+    }
+    if (!restoredPosition.current) {
+      if (data) {
+        restoredPosition.current = true;
+        // При входе в чат всегда показываем последние сообщения. Старую позицию
+        // сохраняем только для текущей открытой ленты, пока пользователь листает её.
+        if (enteredChat) stuck.current = true;
+      }
+    }
+    if (stuck.current) {
+      const target = Math.max(0, el.scrollHeight - el.clientHeight);
+      // Не трогаем scrollTop без необходимости: повторные записи во время измерения
+      // динамических пузырей вызывали заметное подёргивание на мобильных браузерах.
+      if (Math.abs(el.scrollTop - target) > 1) el.scrollTop = target;
+    }
+  }, [data, scrollPositionKey, totalSize, rows.length, virtualizer]);
+
+  // Пока истории нет (грузится, ошибка), нет и области прокрутки.
+  const hasScroller = !!data;
+  // Лента стала ниже (открылась клавиатура, появились вкладки тем, плашка ответа над полем) —
+  // scrollTop прежний, события scroll нет, и низ ленты уезжал под поле ввода: на Android с
+  // клавиатурой последние сообщения было не видно. Как в Telegram, держим нижний край: прилипшая
+  // лента остаётся внизу, остальная — на том же расстоянии от низа.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let height = el.clientHeight;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const prev = height;
+        height = el.clientHeight;
+        if (stuck.current) {
+          const target = Math.max(0, el.scrollHeight - el.clientHeight);
+          if (Math.abs(el.scrollTop - target) > 1) el.scrollTop = target;
+        } else if (height !== prev) {
+          const target = el.scrollHeight - fromBottom.current + (prev - height);
+          if (Math.abs(el.scrollTop - target) > 1) el.scrollTop = target;
+        }
+        fromBottom.current = el.scrollHeight - el.scrollTop;
+      });
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [hasScroller]);
+
+  const loadOlder = useCallback(async () => {
+    if (loadingOlderRef.current || !data?.hasMore) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    try {
+      await loadOlderHistory(client, chat.id, topic);
+    } catch {
+      // Не вышло — попробуем при следующей прокрутке.
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [client, chat.id, topic, data?.hasMore]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollPositions.set(scrollPositionKey, el.scrollTop);
+    fromBottom.current = el.scrollHeight - el.scrollTop;
+    const bottom = fromBottom.current - el.clientHeight < STICK_PX;
+    stuck.current = bottom;
+    if (bottom !== atBottom) setAtBottom(bottom);
+    if (el.scrollTop < LOAD_OLDER_PX) void loadOlder();
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    return () => {
+      if (el) scrollPositions.set(scrollPositionKey, el.scrollTop);
+    };
+  }, [scrollPositionKey]);
+
+  // Мало сообщений на экран — прокрутки нет, историю догружаем сами.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && data?.hasMore && el.scrollHeight <= el.clientHeight + LOAD_OLDER_PX) void loadOlder();
+  }, [data?.hasMore, totalSize, loadOlder]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [highlightId]);
+
+  // Сообщения нет среди загруженных — листаем историю старее, пока не найдётся.
+  const [jumpTarget, setJumpTarget] = useState<{ id: string; pages: number } | null>(null);
+  const jumpTo = (id: string) => setJumpTarget({ id, pages: 0 });
+  const [calendarAt, setCalendarAt] = useState<string | null>(null);
+  useEffect(() => {
+    if (!jumpTarget) return;
+    const i = rows.findIndex((r) => r.kind === "message" && r.message.id === jumpTarget.id);
+    if (i >= 0) {
+      setJumpTarget(null);
+      stuck.current = false;
+      virtualizer.scrollToIndex(i, { align: "center" });
+      setHighlightId(jumpTarget.id);
+      return;
+    }
+    // История ещё не пришла (ссылка ?msg=… открывает чат) — ждём её.
+    if (loadingOlder || !data) return;
+    if (!data.hasMore || jumpTarget.pages >= JUMP_MAX_PAGES) {
+      setJumpTarget(null);
+      return;
+    }
+    setJumpTarget({ ...jumpTarget, pages: jumpTarget.pages + 1 });
+    void loadOlder();
+  }, [jumpTarget, rows, loadingOlder, data, loadOlder, virtualizer]);
+
+  // Esc снимает выбор, если поверх ленты ничего не открыто (как onChatKeydown в chatView.js).
+  const { active: selecting, clear: clearSelection } = selection;
+  const selectMessage = useCallback((message: Message) => {
+    menu.close();
+    selection.toggle(message.id);
+  }, [menu, selection]);
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector("[data-thread]")) return;
+      e.stopPropagation();
+      menu.close();
+      clearSelection();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [selecting, clearSelection, menu]);
+
+  const messagesById = useMemo(() => new Map((data?.messages ?? []).map((m) => [m.id, m])), [data?.messages]);
+  const isGroup = chat.type === "group";
+  // Контактом из ветки можно отправить участника группы, как из основного поля.
+  const threadPeople = useMemo(() => members.filter((u) => u.id !== me.id), [members, me.id]);
+  const isChannel = chat.type === "channel";
+  const canResolveReports = isServerModerator(me);
+
+  if (history.isPending) {
+    return (
+      <div className={styles.feed}>
+        <span className={styles.spinner} aria-label="Загрузка" />
+      </div>
+    );
+  }
+  if (history.isError && !data) {
+    return (
+      <div className={styles.feed}>
+        <div className={styles.center}>
+          <p>{errorText(history.error, "Не удалось загрузить чат")}</p>
+          <button type="button" className={styles.retry} onClick={() => void history.refetch()}>
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const senderName = (m: Message) => senders(m)?.name ?? null;
+  const stickyDay = topDay(rows, virtualizer.getVirtualItems(), virtualizer.scrollOffset ?? 0);
+  const toggleSelect = (m: Message) => selection.toggle(m.id);
+  const selected = selection.active ? (data?.messages ?? []).filter((m) => selection.ids.has(m.id)) : [];
+  const protectedContent = isProtectedChat(chat);
+  const openMedia = (m: Message, url: string) => {
+    const items = buildGallery(
+      data?.messages ?? [],
+      (x) => (x.senderId === meId && !x.anonymous ? "Вы" : senderName(x)),
+      (x) => {
+        const paid = client.getQueryData(paidMediaQuery(x.chatId, x.id).queryKey);
+        return paid && "attachments" in paid ? paid.attachments : null;
+      }
+    );
+    const index = galleryIndex(items, m.id, url);
+    if (index < 0) {
+      // Медиа не в загруженной части ленты (глубокая история / ответ на старое сообщение) —
+      // подгружаем историю и открываем само сообщение, вместо молчаливого ничего.
+      jumpTo(m.id);
+      return;
+    }
+    setViewer({ items, index });
+  };
+
+  // Ответ на историю: открываем её снимок из сообщения. Автор — из ответа (authorId), а у
+  // старых ответов — участник лички, который не отправлял сообщение (ответ уходит автору).
+  // Время — публикации истории, у старых ответов — самого ответа: история была живой, когда
+  // на неё ответили. Срок — сутки от публикации, как у историй.
+  const openStory = (reply: { url?: string | null; kind?: string; authorName?: string | null; authorId?: string; createdAt?: string }, m: Message) => {
+    if (!reply.url) return;
+    const kind = reply.kind === "video" ? "video" : "image";
+    const createdAt = reply.createdAt ?? m.createdAt;
+    const authorId = reply.authorId ?? (chat.type === "dm" ? (members.find((u) => u.id !== m.senderId)?.id ?? null) : null);
+    const member = authorId ? members.find((u) => u.id === authorId) : undefined;
+    const story = {
+      id: `reply_${m.id}`,
+      userId: authorId ?? `reply_${m.id}`,
+      kind,
+      url: reply.url,
+      items: [{ kind, url: reply.url }],
+      createdAt,
+      expiresAt: new Date(Date.parse(createdAt) + 86_400_000).toISOString(),
+      viewedByIds: [],
+      likedByIds: [],
+      viewed: true,
+      liked: false,
+      likeCount: 0,
+      viewCount: 0,
+    };
+    const author = {
+      id: authorId ?? `reply_${m.id}`,
+      name: member?.name ?? reply.authorName ?? "История",
+      username: member?.username ?? null,
+      avatarColor: member?.avatarColor ?? null,
+      avatarImage: member?.avatarImage ?? null,
+      isVerified: false,
+      isPremium: false,
+      isBot: false,
+      isChannel: false,
+    };
+    openStoryViewer([{ user: author, stories: [story] } as unknown as StoryGroup], 0);
+  };
+
+  return (
+    <div className={styles.feed}>
+      {selection.active ? <SelectionBar messages={selected} chat={chat} me={me} actions={actions} senderName={senderName} onClear={selection.clear} /> : null}
+      <PinnedBar messages={data?.messages ?? []} canUnpin={canPin(chat, meId)} onJumpTo={jumpTo} onUnpin={(m) => void actions.togglePin(m)} />
+      <div ref={scrollRef} className={styles.scroll} onScroll={onScroll} role="log" aria-label="Сообщения">
+        {/* День верхнего видимого сообщения — плашкой поверх ленты, когда его разделитель уже уехал вверх. */}
+        {stickyDay ? (
+          <div className={`${styles.day} ${styles.stickyDay}`}>
+            <button type="button" title="Перейти к дате" onClick={() => setCalendarAt(stickyDay.at)}>
+              {stickyDay.label}
+            </button>
+          </div>
+        ) : null}
+        {rows.length === 0 ? (
+          <div className={styles.empty}>
+            {/* Приветственный стикер, как в Telegram: касание отправляет его в чат. */}
+            {chat.type === "channel" ? (
+              <DomNode className={styles.emptySticker} label="Привет" create={() => renderSticker(HELLO_STICKER, { size: 120 })} />
+            ) : (
+              <button type="button" className={styles.emptyStickerButton} title="Отправить приветствие" aria-label="Отправить приветствие" onClick={() => sendSticker(HELLO_STICKER)}>
+                <DomNode className={styles.emptySticker} create={() => renderSticker(HELLO_STICKER, { size: 120 })} />
+              </button>
+            )}
+            <div className={styles.emptyCard}>
+              <p>Сообщений пока нет — напишите первым</p>
+              {chat.type === "channel" ? null : <p className={styles.emptyHint}>Или нажмите на стикер, чтобы поздороваться</p>}
+            </div>
+          </div>
+        ) : (
+          <div className={showsBotThinking ? `${styles.rows} ${styles.rowsWithThinking}` : styles.rows} style={{ height: totalSize }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const row = rows[item.index]!;
+              return (
+                <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} className={styles.slot} style={{ top: item.start }}>
+                  {row.kind === "day" ? (
+                    <div className={styles.day}>
+                      {/* Плашка даты открывает «Перейти к дате», как в chatView.js. */}
+                      <button type="button" title="Перейти к дате" onClick={() => setCalendarAt(row.at)}>
+                        {row.label}
+                      </button>
+                    </div>
+                  ) : row.kind === "unread" ? (
+                    <div className={styles.unread}>
+                      <span>Непрочитанные сообщения</span>
+                    </div>
+                  ) : (
+                    <div
+                      className={[
+                        styles.message,
+                        row.groupStart ? styles.groupStart : "",
+                        row.groupEnd ? styles.groupEnd : "",
+                        entrance.entering(row.message) ? styles.entering : "",
+                        row.message.id === highlightId ? styles.highlight : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onAnimationEnd={(e) => {
+                        if (e.target === e.currentTarget) entrance.finish(row.message.id);
+                      }}
+                    >
+                      <MessageRow
+                        message={row.message}
+                        me={me}
+                        meId={meId}
+                        canResolveReports={canResolveReports}
+                        senderTag={isGroup && !row.message.anonymous ? memberTag(chat, row.message.senderId) : null}
+                        groupStart={row.groupStart}
+                        groupEnd={row.groupEnd}
+                        isGroup={isGroup}
+                        isChannel={isChannel}
+                        hideDeliveryStatus={chat.type === "dm" && !!chat.otherUser?.blockedViewer}
+                        senders={senders}
+                        replyTo={row.message.replyToId ? (messagesById.get(row.message.replyToId) ?? data?.replyTargets[row.message.replyToId]) : undefined}
+                        onReply={isChannel ? undefined : onReply}
+                        onEdit={onEdit}
+                        onDeletePending={(m) => void actions.remove(m, false)}
+                        onJumpTo={jumpTo}
+                        onOpenMenu={menu.openMenu}
+                        onOpenReactions={menu.openReactions}
+                        onReact={actions.react}
+                        onOpenMedia={openMedia}
+                        protectedContent={protectedContent}
+                        attachmentActions={attachmentActions}
+                        nameOf={nameOf}
+                        userOf={userOf}
+                        onReactionDetails={canViewReactionDetails ? menu.openReactors : undefined}
+                        selecting={selection.active}
+                        selected={selection.ids.has(row.message.id)}
+                        onToggleSelect={row.message.type === "gift" ? undefined : toggleSelect}
+                        summaries={summaries}
+                        onOpenThread={isGroup ? openThread : undefined}
+                        onOpenComments={withComments(chat, row.message) ? (m) => setThread({ kind: "comments", post: m }) : undefined}
+                        onCallBack={selection.active ? undefined : callBack}
+                        onUseSuggestedPhoto={selection.active ? undefined : (m) => void applySuggestedPhoto(m)}
+                        onStickerClick={openPackBySticker}
+                        onOpenStory={openStory}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <BotThinking chat={chat} members={members} typing={typing} />
+        {isChannel && rows.length ? <SponsoredMessage chatId={chat.id} premium={!!me.isPremium} /> : null}
+        {loadingOlder ? <span className={`${styles.spinner} ${styles.topSpinner}`} aria-label="Загружаем историю" /> : null}
+      </div>
+      {!atBottom ? (
+        <button
+          type="button"
+          className={styles.down}
+          title="К последним сообщениям"
+          onClick={() => {
+            stuck.current = true;
+            setAtBottom(true);
+            scrollToBottom();
+          }}
+        >
+          <Icon name="ChevronDown" size={24} />
+          {missed > 0 ? <span className={styles.downBadge}>{missed}</span> : null}
+        </button>
+      ) : null}
+      {viewer ? <MediaViewer items={viewer.items} index={viewer.index} canDownload={!protectedContent} onClose={() => setViewer(null)} /> : null}
+      <MessageMenus
+        control={menu}
+        actions={actions}
+        chat={chat}
+        me={me}
+        senderName={senderName}
+        author={(m) => senders(m)}
+        nameOf={knownName}
+        userOf={userOf}
+        onReply={isChannel ? undefined : onReply}
+        onEdit={onEdit}
+        onSelect={selectMessage}
+        summaries={summaries}
+        onOpenThread={isGroup ? openThread : undefined}
+      />
+      {thread ? (
+        <ThreadPanel
+          chat={chat}
+          source={thread}
+          me={me}
+          userOf={userOf}
+          onClose={() => setThread(null)}
+          composer={(onSent, target, replyTo) => (
+            <Composer
+              chatId={target.chatId}
+              meId={me.id}
+              channel={false}
+              initialDraft=""
+              replyTo={replyTo}
+              replyToName={replyTo ? senderName(replyTo) : null}
+              onCancelReply={noop}
+              people={target.postId ? target.people.filter((u) => u.id !== me.id) : threadPeople}
+              thread={{ rootId: target.rootId, onSent, postId: target.postId }}
+              canPostAsChannel={!!target.postId && (isChatAdmin(chat, me.id) || isChatModerator(chat, me.id) || isServerModerator(me))}
+              paid={target.paidStars ? { stars: target.paidStars, kind: "comment" } : null}
+              typing={!target.postId || target.people.some((u) => u.id === me.id)}
+            />
+          )}
+        />
+      ) : null}
+      {calendarAt ? <ChatCalendar chatId={chat.id} around={calendarAt} onPick={jumpTo} onClose={() => setCalendarAt(null)} /> : null}
+      {stickerView.pack || stickerView.builtin || stickerView.focus || stickerView.missing ? (
+        <StickerPackDetail
+          overlay
+          pack={stickerView.pack}
+          builtin={stickerView.builtin}
+          onBuiltinPick={sendSticker}
+          focus={stickerView.focus}
+          missing={stickerView.missing}
+          onClose={closeStickerPack}
+          onStickerPick={sendSticker}
+          onRefresh={refreshPacks}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+type RowProps = {
+  message: FeedMessage;
+  me: SelfUser;
+  meId: string;
+  /** Модератор Nexora решает жалобы прямо из сообщений-жалоб. */
+  canResolveReports: boolean;
+  senderTag: string | null;
+  groupStart: boolean;
+  groupEnd: boolean;
+  isGroup: boolean;
+  isChannel: boolean;
+  hideDeliveryStatus: boolean;
+  senders: (m: { senderId: string; anonymous?: boolean }) => MessageSender | null;
+  replyTo: Message | ReplyTarget | undefined;
+  onReply?: (m: Message, quote?: string) => void;
+  onEdit?: (m: Message) => void;
+  onDeletePending?: (m: Message) => void;
+  onJumpTo: (id: string) => void;
+  onOpenMenu: (m: Message, at: { x: number; y: number }, quote?: string) => void;
+  onOpenReactions: (m: Message, at: { x: number; y: number }) => void;
+  onReact: (m: Message, emoji: string) => void;
+  onOpenMedia: (m: Message, url: string) => void;
+  protectedContent: boolean;
+  attachmentActions: AttachmentActions;
+  nameOf: (userId: string) => string;
+  userOf: (userId: string) => MessageSender | null;
+  onReactionDetails?: (m: Message, emoji: string, at: { x: number; y: number }) => void;
+  selecting: boolean;
+  selected: boolean;
+  onToggleSelect?: (m: Message) => void;
+  summaries: Summaries;
+  onOpenThread?: (m: Message) => void;
+  /** Пост канала с группой обсуждения — «Комментарии» внизу пузыря. */
+  onOpenComments?: (m: Message) => void;
+  /** Запись о звонке — перезвонить. */
+  onCallBack?: (kind: CallKind) => void;
+  /** «Установить как фото профиля» под предложенным фото. */
+  onUseSuggestedPhoto?: (m: Message) => void;
+  /** Клик на стикер в сообщении — открыть его пак (как в Telegram). */
+  onStickerClick?: (sticker: Sticker) => void;
+  /** Ответ на историю — открыть просмотр историй (как в Telegram). */
+  onOpenStory?: (reply: { url?: string | null; kind?: string; authorName?: string | null; authorId?: string; createdAt?: string }, message: Message) => void;
+};
+
+function MessageRowView(props: RowProps) {
+  const { message, me, meId, groupStart, groupEnd, isGroup, isChannel, senders, replyTo, onReply, onJumpTo, onOpenMenu, onOpenReactions, onReact, onStickerClick, onOpenStory } = props;
+  const mine = message.senderId === meId;
+  const replyToName = replyTo && !("deleted" in replyTo) ? (senders(replyTo)?.name ?? null) : null;
+  const comments = props.onOpenThread && message.type !== "system" && !message.threadRootId ? (message.commentCount ?? 0) : 0;
+  if (message.type === "report" && message.report && typeof message.report === "object") {
+    return (
+      <ReportMessage
+        messageId={message.id}
+        report={message.report as ReportInfo}
+        canResolve={props.canResolveReports}
+        time={timeLabel(message.createdAt)}
+        read={mine && !props.hideDeliveryStatus ? isReadByOthers(message) : null}
+      />
+    );
+  }
+  const bubble = (
+    <MessageBubble
+      message={message}
+      mine={mine}
+      // Свой пузырь всегда подписываем текущим пользователем. Это защищает UI от
+      // устаревшего списка участников или события бота, где профиль отправителя
+      // временно совпал с Nexora AI.
+      sender={mine ? me : senders(message)}
+      // По умолчанию пост идёт от канала. При включённой подписи signedBy фиксирует,
+      // что автор выбрал отправку от своего аккаунта, — показываем его имя и аватар.
+      showSender={(isGroup || (isChannel && !!message.signedBy)) && groupStart}
+      senderTag={props.senderTag}
+      showAvatar={isChannel && message.signedBy ? groupEnd : isGroup && !mine ? groupEnd : undefined}
+      groupStart={groupStart}
+      groupEnd={groupEnd}
+      isChannel={isChannel}
+      hideDeliveryStatus={props.hideDeliveryStatus}
+      replyTo={replyTo ?? null}
+      replyToName={replyToName}
+      meId={meId}
+      onReply={onReply}
+      onEdit={props.onEdit}
+      onDeletePending={props.onDeletePending}
+      onJumpTo={onJumpTo}
+      onOpenMenu={onOpenMenu}
+      onOpenReactions={onOpenReactions}
+      onReact={onReact}
+      onOpenMedia={props.onOpenMedia}
+      protectedContent={props.protectedContent}
+      attachmentActions={props.attachmentActions}
+      nameOf={props.nameOf}
+      userOf={props.userOf}
+      onReactionDetails={props.onReactionDetails}
+      selecting={props.selecting}
+      selected={props.selected}
+      onToggleSelect={props.onToggleSelect}
+      summary={props.summaries.of(message.id)}
+      onCallBack={props.onCallBack}
+      onUseSuggestedPhoto={props.onUseSuggestedPhoto}
+      onStickerClick={onStickerClick}
+      onOpenStory={onOpenStory}
+      footer={
+        props.onOpenComments ? (
+          <button
+            type="button"
+            className={styles.postComments}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpenComments?.(message);
+            }}
+          >
+            <Icon name="MessageSquare" size={20} />
+            <span className={styles.postCommentsLabel}>{commentsLabel(message.commentCount ?? 0)}</span>
+          </button>
+        ) : undefined
+      }
+    />
+  );
+  // Просмотры поста считаются, когда его увидел подписчик (viewObserver в chatView.js).
+  const counted = isChannel && !mine && message.type !== "system" && !message.pending ? <PostView postId={message.id} /> : null;
+  if (counted) {
+    return (
+      <>
+        {bubble}
+        {counted}
+      </>
+    );
+  }
+  if (!comments) return bubble;
+  // Ответы в ветке — ссылкой под сообщением (post-comments-link в chatView.js).
+  return (
+    <>
+      {bubble}
+      <button type="button" className={mine ? `${styles.comments} ${styles.commentsMine}` : styles.comments} onClick={() => props.onOpenThread?.(message)}>
+        💬 {comments} {repliesWord(comments)}
+      </button>
+    </>
+  );
+}
+
+// Прокрутка меняет служебное состояние ленты, но не содержимое уже видимых
+// сообщений. Memo не даёт перерисовывать весь экран чата на каждом scroll-событии.
+const MessageRow = memo(MessageRowView);
+
+/** У поста есть обсуждение: канал связан с группой, комментарии не выключены (withComments). */
+const withComments = (chat: ChatSummary, m: FeedMessage) => chat.type === "channel" && m.type !== "system" && !!chat.linkedDiscussionChatId && !chat.commentsOff && !!m.discussionAnchorId;
+
+function commentsLabel(n: number) {
+  if (!n) return "Комментарии";
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} комментарий`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} комментария`;
+  return `${n} комментариев`;
+}
+
+/** Тег участника группы — строка из memberTitles. */
+const memberTag = (chat: ChatSummary, userId: string) => {
+  const tag = chat.memberTitles?.[userId];
+  return typeof tag === "string" && tag ? tag : null;
+};
+
+const repliesWord = (n: number) => (n === 1 ? "ответ" : n < 5 ? "ответа" : "ответов");
+
+/** Автор сообщения: участник чата, собеседник в личке, сам чат — у анонимных админов. */
+function useSenders(chat: ChatSummary, members: readonly ChatMember[]) {
+  return useMemo(() => {
+    const byId = new Map<string, MessageSender>();
+    for (const u of members) byId.set(u.id, u);
+    if (chat.otherUser) byId.set(chat.otherUser.id, chat.otherUser);
+    const asChat: MessageSender = { id: chat.id, name: chat.title ?? "", avatarColor: chat.avatarColor, avatarImage: chat.avatarImage };
+    return (m: { senderId: string; anonymous?: boolean }) => (m.anonymous ? asChat : (byId.get(m.senderId) ?? null));
+  }, [chat, members]);
+}
+
+/** Разделитель дня для верхнего видимого сообщения, если сам он уже прокручен выше края ленты. */
+function topDay(rows: readonly FeedRow[], items: readonly { index: number; start: number; end: number }[], offset: number) {
+  const top = items.find((it) => it.end > offset);
+  if (!top) return null;
+  for (let i = top.index; i >= 0; i--) {
+    const row = rows[i];
+    if (row?.kind !== "day") continue;
+    const own = items.find((it) => it.index === i);
+    return own && own.start >= offset ? null : row;
+  }
+  return null;
+}

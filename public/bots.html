@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nexora Bot API — документации</title>
+<meta name="description" content="Документация Bot API Nexora: токен, получение сообщений, отправка, кнопки и пример бота на Node.js. Бота программировать на своём сервере — встроенного редактора больше нет." />
+<meta name="theme-color" content="#2e56d9" />
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Nexora Bot API" />
+<meta property="og:description" content="Как написать бота для Nexora: HTTP API с токеном — на вашем сервере. Встроенного редактора кода больше нет." />
+<meta property="og:image" content="/icons/apple-touch-icon.png" />
+<link rel="stylesheet" href="/styles/base.css" />
+<link rel="stylesheet" href="/styles/bots.css" />
+</head>
+<body>
+<div class="doc-page">
+
+  <header class="doc-top">
+    <span class="doc-top-logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.05 8.72L18.6 6.14L16.7 15.6L3.6 15.75Z"/><path fill="currentColor" opacity="0.5" d="M18.6 6.14L11.7 11L16.7 15.6Z"/><path fill="currentColor" opacity="0.75" d="M6.3 15.75L10 15.9L6.5 20.5Z"/></svg>
+    </span>
+    <span>
+      <div class="doc-top-title">Nexora Bot API</div>
+      <div class="doc-top-sub">Документация для разработчиков</div>
+    </span>
+    <span class="doc-top-spacer"></span>
+    <a class="doc-top-link" href="/">Открыть Nexora</a>
+  </header>
+
+  <div class="doc-shell">
+    <nav class="doc-nav">
+      <h4>Начало</h4>
+      <a href="#index">Все методы</a>
+      <a href="#ways">Два способа</a>
+      <a href="#token">Токен</a>
+      <a href="#quickstart">Быстрый старт</a>
+      <h4>HTTP API</h4>
+      <a href="#auth">Авторизация</a>
+      <a href="#me">GET /me</a>
+      <a href="#updates">GET /updates</a>
+      <a href="#send">POST /sendMessage</a>
+      <a href="#write-first">Написать первым</a>
+      <a href="#media">Картинки и файлы</a>
+      <a href="#edit">Правка и удаление</a>
+      <a href="#pin">Закрепление</a>
+      <a href="#typing">Печатает…</a>
+      <a href="#who">Чаты и люди</a>
+      <a href="#history">История чата</a>
+      <a href="#more-send">Стикеры, опросы, реакции</a>
+      <a href="#admin">Права администратора</a>
+      <a href="#media2">Видео, голос, место, контакт</a>
+      <a href="#media3">Альбомы и копирование</a>
+      <a href="#msg-more">Работа с сообщениями</a>
+      <a href="#schedule">Отложенная отправка</a>
+      <a href="#members">Участники и права</a>
+      <a href="#channels">Каналы</a>
+      <a href="#discussion">Канал и обсуждение</a>
+      <a href="#profile">Профиль бота</a>
+      <a href="#keyboard">Кнопки</a>
+      <a href="#apps">Мини-приложения</a>
+      <a href="#commands">Команды</a>
+      <h4>Редактор в приложении</h4>
+      <a href="#editor">Как это работает</a>
+      <a href="#handle">handleMessage</a>
+      <a href="#limits">Ограничения</a>
+      <a href="#vscode">Писать в VS Code</a>
+      <h4>Игры</h4>
+      <a href="#games">SDK внутри игры</a>
+      <a href="#game-api">Game API</a>
+      <h4>Справка</h4>
+      <a href="#errors">Ошибки</a>
+      <a href="#objects">Объекты</a>
+    </nav>
+
+    <main class="doc-body">
+      <section class="doc-hero">
+        <h1>Bot API</h1>
+        <p>
+          Бот в Nexora — обычный аккаунт, которым управляет программа. Он состоит в чатах, пишет сообщения,
+          показывает кнопки. Программу держите где угодно и пишите на чём угодно — через Bot API с токеном:
+          встроенного редактора кода больше нет, бот работает с вашего сервера.
+        </p>
+      </section>
+
+      <h2 id="index">Все методы</h2>
+      <p>
+        53 методов. Все — по адресу <code>/api/bot-api</code>, все с заголовком
+        <code>Authorization: Bearer …</code>, все принимают и отдают JSON.
+      </p>
+      <table class="doc-table doc-index">
+        <tbody>
+        <tr><th colspan="2" class="doc-index-group">Сообщения</th></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendPhoto</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendDocument</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendVideo</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendVoice</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendVideoNote</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendSticker</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendPoll</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendLocation</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendContact</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/forwardMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/editMessageText</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/editMessageKeyboard</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/deleteMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendReaction</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getMessages</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/searchMessages</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getPinnedMessages</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/pinChatMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/unpinChatMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendChatAction</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Отложенная отправка</th></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/scheduleMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getScheduled</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/cancelScheduled</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Чаты</th></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChats</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChat</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/createGroup</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/setChatTitle</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/setChatDescription</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/setChatPermissions</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/exportChatInviteLink</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/leaveChat</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Участники</th></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChatAdmins</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChatMember</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChatMemberCount</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/addChatMember</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/promoteChatMember</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/restrictChatMember</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/banChatMember</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/deleteAnyMessage</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/sendGame</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/getChatJoinRequests</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/approveChatJoinRequest</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/declineChatJoinRequest</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Люди</th></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/resolveUsername</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getUser</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getUserStatus</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getCommonChats</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Каналы</th></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/publishPost</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getChannelStats</code></td><td></td></tr>
+        <tr><th colspan="2" class="doc-index-group">Бот</th></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/me</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/updates</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getMyCommands</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/setMyCommands</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">POST</span> <code>/setMyProfile</code></td><td></td></tr>
+        <tr><td><span class="doc-verb">GET</span> <code>/getMyStats</code></td><td></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="ways">Два способа сделать бота</h2>
+      <div class="doc-ways">
+        <div class="doc-way">
+          <h3>Свой сервер, свой язык</h3>
+          <p>
+            Скрипт на вашей машине спрашивает у Nexora новые сообщения и отвечает на них. Нужен только
+            исходящий интернет — ни белого IP, ни домена, ни вебхуков. Любой язык, любые библиотеки,
+            своя база данных. Это и есть HTTP API ниже.
+          </p>
+        </div>
+        <div class="doc-way">
+          <h3>Редактор внутри Nexora</h3>
+          <p>
+            Функция на JavaScript, которая исполняется на сервере при каждом входящем сообщении.
+            Ни токена, ни хостинга, ни цикла опроса. Быстрее всего для небольшого бота — и заметно
+            ограниченнее, о чём честно сказано в разделе про ограничения.
+          </p>
+        </div>
+      </div>
+
+      <h2 id="token">Токен</h2>
+      <p>
+        Настройки → <strong>Боты</strong> → «Создать бота». У бота сразу появляется собственный аккаунт с
+        юзернеймом вида <code>@name_bot</code> и токен — длинная строка, которая и есть право говорить от его
+        имени.
+      </p>
+      <p>
+        Потерять токен нестрашно: кнопка с ключом рядом с ботом показывает действующий в любой момент.
+        Перевыпуск (кнопка обновления) выдаёт новый и делает старый недействительным — работающая программа
+        со старым токеном сразу перестанет отвечать, так что перевыпускайте только если он утёк.
+      </p>
+      <div class="doc-note danger">
+        <strong>Токен — это пароль бота.</strong>
+        Кто им владеет, тот и есть бот: читает его чаты и пишет от его имени. Не кладите его в публичный
+        репозиторий и не вставляйте в код фронтенда — только в переменные окружения на своей стороне.
+      </div>
+
+      <h2 id="quickstart">Быстрый старт</h2>
+      <p>Проверить, что токен рабочий, — одна команда:</p>
+      <pre><code>curl -H "Authorization: Bearer ВАШ_ТОКЕН" \
+  https://nexora.ru/api/bot-api/me</code></pre>
+      <p>В ответ придёт аккаунт бота. Дальше — рабочий бот целиком, на голом Node без единой зависимости:</p>
+      <pre><code>const TOKEN = process.env.NEXORA_TOKEN;
+const API = "https://nexora.ru/api/bot-api";
+const auth = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+
+let after = new Date().toISOString(); // начинаем с «сейчас», старое не разгребаем
+
+async function send(chatId, text) {
+  await fetch(`${API}/sendMessage`, {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ chatId, text }),
+  });
+}
+
+async function tick() {
+  const res = await fetch(`${API}/updates?after=${encodeURIComponent(after)}`, { headers: auth });
+  const { messages } = await res.json();
+  for (const msg of messages) {
+    after = msg.createdAt; // следующий опрос — строго после последнего разобранного
+    if (msg.text === "/start") await send(msg.chatId, "Привет! Я бот.");
+    else await send(msg.chatId, `Вы написали: ${msg.text}`);
+  }
+}
+
+setInterval(() =&gt; tick().catch(console.error), 2000);</code></pre>
+
+      <h2 id="auth">Авторизация</h2>
+      <p>
+        Все запросы к <code>/api/bot-api/*</code> требуют заголовка:
+      </p>
+      <pre><code>Authorization: Bearer ВАШ_ТОКЕН</code></pre>
+      <p>
+        Без него — <code>401</code> с текстом <code>Missing Authorization: Bearer &lt;token&gt;</code>,
+        с неверным — <code>401 Invalid bot token</code>. Куки и сессии здесь не используются: бот не человек,
+        он не «входит» в приложение.
+      </p>
+
+      <h2 id="me">Кто я</h2>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/me</div>
+      <p>Возвращает аккаунт бота — имя, юзернейм, аватар. Нужен, чтобы проверить токен и узнать свой <code>id</code>.</p>
+      <pre><code>{ "bot": { "id": "u_17…", "name": "Погодный", "username": "pogodnyy_bot", "isBot": true } }</code></pre>
+
+      <h2 id="updates">Новые сообщения</h2>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/updates?after=&lt;ISO-время&gt;</div>
+      <p>
+        Отдаёт сообщения из чатов бота, пришедшие <strong>после</strong> указанного времени. Свои собственные
+        сообщения бот в ответе не увидит — иначе он отвечал бы сам себе по кругу.
+      </p>
+      <table class="doc-table">
+        <thead><tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>after</td><td>строка, ISO 8601</td><td>Время последнего разобранного сообщения. Без него отдаётся всё с начала времён.</td></tr>
+          <tr><td>timeout</td><td>число, секунды (до 50)</td><td>Длинный опрос: сервер не отвечает пустотой сразу, а держит запрос до первого сообщения. С ним бот отвечает мгновенно.</td></tr>
+          <tr><td>limit</td><td>число (до 200)</td><td>Сколько сообщений отдать за раз. По умолчанию 200.</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Сообщения отсортированы по возрастанию времени, поэтому следующее значение <code>after</code> —
+        это <code>messages.at(-1).createdAt</code>. За один запрос отдаётся не больше 200 сообщений:
+        разговорчивый бот не должен получить в ответ всю свою историю.
+      </p>
+      <div class="doc-note">
+        <strong>Ставьте <code>timeout</code> — это и есть скорость бота.</strong>
+        Без него задержка ответа равна паузе в вашем цикле: спите две секунды между запросами — нажатая
+        кнопка молчит до двух секунд. С <code>timeout=30</code> запрос висит до появления сообщения и
+        возвращается в тот же миг, когда оно пришло, а пустой ответ через 30 секунд означает «просто спроси
+        снова» — паузы между запросами не нужно вовсе.
+      </div>
+      <pre><code>let after = new Date().toISOString();
+while (true) {
+  const res = await fetch(`${API}/updates?after=${after}&amp;timeout=30`, { headers: auth });
+  const { messages } = await res.json();
+  for (const m of messages) await handle(m);
+  if (messages.length) after = messages.at(-1).createdAt;
+}</code></pre>
+      <div class="doc-note">
+        <strong>Опрос, а не вебхук — намеренно.</strong>
+        Вебхук требует публичного адреса и сертификата; опрос работает откуда угодно, включая ноутбук за NAT.
+      </div>
+
+      <h2 id="send">Отправка</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendMessage</div>
+      <table class="doc-table">
+        <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>chatId</td><td>строка</td><td>Обязательное. Куда писать — берётся из <code>msg.chatId</code> входящего сообщения.</td></tr>
+          <tr><td>text</td><td>строка</td><td>Обязательное. Пустой текст отклоняется с <code>400</code>.</td></tr>
+          <tr><td>replyToId</td><td>строка</td><td>Ответить на конкретное сообщение — в чате будет видна цитата.</td></tr>
+          <tr><td>keyboard</td><td>массив рядов</td><td>Кнопки под сообщением, см. ниже.</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Бот может писать только в те чаты, где он состоит: попытка написать в чужой чат вернёт
+        <code>404 Bot is not a member of this chat</code>. Это не формальность — иначе токен любого бота
+        превращался бы в право рассылки по всему мессенджеру.
+      </p>
+
+      <h2 id="write-first">Бот пишет первым</h2>
+      <p>
+        <code>sendMessage</code> отправляет в чат, где бот уже состоит. Чтобы начать разговор самому — найти
+        человека и написать ему, — есть отдельный метод. Ради него боты обычно и заводятся: напомнить о
+        доставке, прислать код, сообщить о заказе.
+      </p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendMessageToUser</div>
+      <pre><code>await fetch(`${API}/sendMessageToUser`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({
+    username: "ivan",                  // или userId: "u_…"
+    text: "Заказ №42 приедет к 18:00",
+    keyboard: [[{ text: "Отследить", data: "/track 42" }]],
+  }),
+});
+// → { chatId, message, user }</code></pre>
+      <table class="doc-table">
+        <thead><tr><th>Поле</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>username</td><td>@юзернейм получателя, с «@» или без.</td></tr>
+          <tr><td>userId</td><td>Идентификатор, если он у вас уже есть (например, из <code>/updates</code>).</td></tr>
+          <tr><td>text</td><td>Текст сообщения.</td></tr>
+          <tr><td>keyboard</td><td>Кнопки — как в <a href="#keyboard">обычной отправке</a>.</td></tr>
+        </tbody>
+      </table>
+      <div class="doc-note">
+        <strong>Поиска по номеру телефона здесь нет — и не будет.</strong>
+        Метод, принимающий номер, перебором превращается в телефонную книгу: по нему выяснили бы, у кого есть
+        аккаунт и как его зовут. @юзернейм — другое дело: человек сам решил его завести.
+      </div>
+      <p>Отказы, которые надо уметь обрабатывать:</p>
+      <table class="doc-table">
+        <thead><tr><th>Код</th><th>Когда</th></tr></thead>
+        <tbody>
+          <tr><td>403</td><td>Получатель запретил ботам писать первыми (Настройки → Конфиденциальность) или заблокировал этого бота.</td></tr>
+          <tr><td>404</td><td>Такого @юзернейма нет.</td></tr>
+          <tr><td>429</td><td>Больше 20 <em>новых</em> разговоров в час. Отвечать в уже открытых чатах можно без ограничений.</td></tr>
+        </tbody>
+      </table>
+      <div class="doc-note">
+        <strong>Почему ограничения именно такие.</strong>
+        Без них этот метод — готовая рассылка спама: нашёл всех подряд по юзернеймам и написал каждому.
+        Поэтому: человек может выключить такие сообщения одним переключателем, заблокировавшему бота не
+        пишут вовсе, а число новых разговоров в час ограничено. Продолжать уже начатую переписку это никак
+        не ограничивает.
+      </div>
+
+      <h2 id="media">Картинки и файлы</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendPhoto</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendDocument</div>
+      <p>
+        Вложение передаётся <strong>ссылкой</strong>, а не загрузкой файла: у бота уже есть где хранить свои
+        картинки, а второй путь загрузки на сервер тянул бы за собой свои лимиты, чистку и квоты.
+        Годится и <code>data:</code>-URL, если файл маленький и генерируется на лету.
+      </p>
+      <table class="doc-table">
+        <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>chatId</td><td>строка</td><td>Обязательное.</td></tr>
+          <tr><td>url</td><td>строка</td><td>Обязательное. Адрес картинки или файла: <code>http(s)://</code> или <code>data:</code>. Другой адрес — <code>400</code>.</td></tr>
+          <tr><td>caption</td><td>строка</td><td>Подпись — она же становится текстом сообщения.</td></tr>
+          <tr><td>name</td><td>строка</td><td>Только для sendDocument: имя файла, которое увидит человек.</td></tr>
+          <tr><td>replyToId</td><td>строка</td><td>Ответить на сообщение.</td></tr>
+        </tbody>
+      </table>
+      <pre><code>await fetch(`${API}/sendPhoto`, {
+  method: "POST", headers: auth,
+  body: JSON.stringify({ chatId, url: "https://example.com/chart.png", caption: "Отчёт за неделю" }),
+});</code></pre>
+
+      <h2 id="edit">Правка и удаление</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/editMessageText</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/deleteMessage</div>
+      <p>
+        Первый принимает <code>messageId</code> и новый <code>text</code>, второй — только
+        <code>messageId</code>. Изменения видны всем в чате сразу, без перезагрузки.
+      </p>
+      <p>
+        Бот может править и удалять <strong>только свои</strong> сообщения — чужое вернёт <code>403</code>.
+        Это не формальность: токен бота живёт на чьём-то сервере, и право стирать чужие слова там ему не нужно.
+      </p>
+      <pre><code>const { message } = await (await fetch(`${API}/sendMessage`, {
+  method: "POST", headers: auth, body: JSON.stringify({ chatId, text: "Считаю…" }),
+})).json();
+
+const result = await heavyWork();
+
+await fetch(`${API}/editMessageText`, {
+  method: "POST", headers: auth,
+  body: JSON.stringify({ messageId: message.id, text: `Готово: ${result}` }),
+});</code></pre>
+
+      <h2 id="pin">Закрепление</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/pinChatMessage</div>
+      <p>
+        Принимает <code>messageId</code> и <code>pinned</code> (<code>true</code> по умолчанию,
+        <code>false</code> — открепить). Здесь правило другое, чем у правки: закрепить можно и чужое
+        сообщение, но только там, где бот <strong>администратор</strong>. Закреп видит весь чат — это
+        действие модератора, а не отправителя. В личном чате с ботом ограничения нет.
+      </p>
+
+      <h2 id="typing">Печатает…</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendChatAction</div>
+      <p>
+        Принимает <code>chatId</code>. Показывает в чате, что бот думает над ответом — то, что отличает
+        занятого бота от зависшего. Живёт пять секунд, как и у людей: перед длинным шагом повторяйте,
+        а не ставьте один раз в начале.
+      </p>
+      <p>
+        Необязательный <code>action</code> — что именно происходит, те же значения, что в Telegram Bot API:
+        <code>typing</code>, <code>choose_sticker</code>, <code>upload_photo</code>, <code>record_video</code>,
+        <code>upload_video</code>, <code>record_voice</code>, <code>upload_voice</code>, <code>upload_document</code>,
+        <code>record_video_note</code>, <code>upload_video_note</code>. Без него — «печатает».
+      </p>
+
+      <h2 id="who">Чаты и люди</h2>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChats</div>
+      <p>Все чаты, где состоит бот: <code>id</code>, тип, название, число участников и признак админа.
+        Без него единственный способ узнать свой чат — дождаться, пока туда кто-нибудь напишет.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChat?chatId=…</div>
+      <p>Один чат подробно, вместе со списком участников.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/resolveUsername?username=@handle</div>
+      <p>
+        Найти человека или канал по @юзернейму — то, чем бот ищет собеседника сам, а не ждёт, пока
+        напишут ему. Возвращает <code>kind</code> (<code>user</code>, <code>channel</code>, <code>group</code>)
+        и найденное.
+      </p>
+      <div class="doc-note danger">
+        <strong>Поиска по номеру телефона здесь нет и не будет.</strong>
+        Метод, отвечающий «есть ли аккаунт у этого номера», — это готовая телефонная книга: перебором
+        номеров он выдал бы, кто в мессенджере и как его зовут. @юзернейм — другое дело: он публичен по
+        своей сути, человек сам решил его завести.
+      </div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getUser?userId=…</div>
+      <p>
+        Кто написал. В сообщении приходит только <code>senderId</code>; отсюда берутся имя и юзернейм,
+        чтобы ответить «Спасибо, Аня», а не «Спасибо, u_1786…». Чужой адрес почты не отдаётся никогда —
+        ни здесь, ни где-либо ещё.
+      </p>
+
+      <h2 id="history">История чата</h2>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getMessages?chatId=…&amp;limit=60&amp;before=…</div>
+      <p>
+        Страница сообщений, свежие в конце. <code>before</code> — идентификатор сообщения, от которого идти
+        назад; в ответе есть <code>hasMore</code>. За раз не больше 200. Читаются только чаты, где бот состоит.
+      </p>
+
+      <h2 id="more-send">Стикеры, опросы, реакции</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendSticker</div>
+      <p><code>chatId</code>, <code>emoji</code>, необязательные <code>name</code> и <code>scene</code>
+        (имя нарисованной сцены — см. набор «Nexora» в приложении).</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendPoll</div>
+      <p><code>chatId</code>, <code>question</code> и <code>options</code> — от двух до восьми вариантов.
+        Голосуют люди, бот только создаёт.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendReaction</div>
+      <p><code>messageId</code> и <code>emoji</code>. Повторный вызов с тем же эмодзи снимает реакцию —
+        как и нажатие пальцем.</p>
+
+      <h2 id="admin">Права администратора</h2>
+      <p>
+        Всё в этом разделе требует, чтобы бота <strong>назначили администратором чата</strong>. Это то же
+        правило, что и для человека: права даёт владелец чата, а не наличие токена.
+      </p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/deleteAnyMessage</div>
+      <p>Удалить <em>чужое</em> сообщение — то, ради чего заводят бота-модератора. Своё бот удаляет методом
+        <code>deleteMessage</code> и без прав.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/restrictChatMember</div>
+      <p><code>chatId</code>, <code>userId</code>, <code>minutes</code> (до 30 дней). Временное молчание:
+        человек остаётся в чате и видит переписку.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/banChatMember</div>
+      <p>Убрать участника из чата.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/getChatJoinRequests</div>
+      <p><code>chatId</code>. Заявки на вступление в канал или группу с включёнными «Заявками на вступление»:
+        <code>userId</code>, <code>name</code>, <code>username</code>, <code>bio</code>, <code>createdAt</code>.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/approveChatJoinRequest</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/declineChatJoinRequest</div>
+      <p><code>chatId</code>, <code>userId</code>. Принять или отклонить заявку — человек сразу увидит канал в списке
+        или уведомление об отказе.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setChatTitle</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setChatDescription</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/leaveChat</div>
+      <p>Уйти из чата — единственное здесь, что боту не нужно согласовывать.</p>
+      <div class="doc-note danger">
+        <strong>Владельца и других администраторов бот не тронет.</strong>
+        Попытка ограничить или выгнать их возвращает <code>400</code>. Иначе одним утёкшим токеном можно
+        было бы обезглавить чат.
+      </div>
+
+      <h2 id="media2">Видео, голос, место, контакт</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendVideo</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendVoice</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendVideoNote</div>
+      <p>Те же поля, что у <code>sendPhoto</code>: <code>chatId</code>, <code>url</code>, <code>caption</code>,
+        <code>replyToId</code>; у голосового и кружка ещё <code>durationSec</code>. Файл передаётся ссылкой — см. раздел «Картинки и файлы».</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendLocation</div>
+      <p><code>lat</code> и <code>lng</code> — точка на карте.</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/sendContact</div>
+      <p><code>name</code>, <code>phone</code>, необязательный <code>userId</code>.</p>
+
+      <h2 id="msg-more">Работа с сообщениями</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/forwardMessage</div>
+      <p><code>messageId</code> и <code>toChatId</code> — оба чата должны быть чатами бота. В пересланном
+        видно, откуда и от кого оно.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getMessage?messageId=…</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/searchMessages?chatId=…&amp;q=…</div>
+      <p>Поиск внутри одного чата, до 50 последних совпадений.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getPinnedMessages?chatId=…</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/unpinChatMessage</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/editMessageKeyboard</div>
+      <p>Заменить кнопки под своим сообщением, не трогая текст — так бот обновляет клавиатуру после нажатия.</p>
+
+      <h2 id="schedule">Отложенная отправка</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/scheduleMessage</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getScheduled?chatId=…</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/cancelScheduled</div>
+      <p>
+        <code>sendAt</code> — время в ISO 8601, обязательно будущее. Права те же, что у <code>sendMessage</code>:
+        в канал ставит в очередь только бот-админ, иначе <code>403</code>. Нужно затем же, зачем людям: разослать
+        объявление в назначенный час, а не будить программу ночью.
+      </p>
+
+      <h2 id="members">Участники и права</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/createGroup</div>
+      <p>
+        <code>title</code> и <code>memberIds</code>. Бот становится владельцем созданной группы.
+      </p>
+      <div class="doc-note">
+        <strong>Позвать можно только знакомых.</strong>
+        В <code>memberIds</code> проходят лишь те, с кем бот уже состоит в общем чате — иначе токен
+        превращался бы в право затащить любого человека в любую группу.
+      </div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/addChatMember</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/promoteChatMember</div>
+      <p><code>admin: true｜false</code>. Владельца изменить нельзя — он не «ещё один администратор».</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setChatPermissions</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/exportChatInviteLink</div>
+      <p><code>revoke: true</code> выпускает новую ссылку вместо старой.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChatAdmins?chatId=…</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChatMember?chatId=…&amp;userId=…</div>
+      <p>Отдаёт человека, его права и срок ограничения, если он есть.</p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChatMemberCount?chatId=…</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getUserStatus?userId=…</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getCommonChats?userId=…</div>
+      <p>Общие чаты бота с этим человеком.</p>
+
+      <h2 id="channels">Каналы</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/publishPost</div>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChannelStats?chatId=…</div>
+      <p>Подписчики, посты, просмотры и комментарии. И то и другое — только для канала, где бот администратор.</p>
+
+      <h2 id="discussion">Канал и его обсуждение</h2>
+      <p>
+        Связка «канал + группа комментариев» собирается скриптом целиком: завести канал, прицепить к нему
+        обсуждение, опубликовать пост. Раньше это можно было сделать только руками через меню.
+      </p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/createChannel</div>
+      <pre><code>const { chat } = await (await fetch(`${API}/createChannel`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({
+    title: "Пиццерия · новости",
+    description: "Акции и новинки",
+    username: "pizza_news",   // необязательно
+    isPublic: true,           // работает только вместе с username
+  }),
+})).json();</code></pre>
+      <p>
+        Владельцем канала становится не только бот, но и <strong>его хозяин</strong>: иначе канал,
+        созданный программой, принадлежал бы программе — сменился токен, и живой человек остался бы без
+        доступа к собственному каналу.
+      </p>
+
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setChatDiscussion</div>
+      <table class="doc-table">
+        <thead><tr><th>action</th><th>Что делает</th></tr></thead>
+        <tbody>
+          <tr><td><code>create</code></td><td>Заводит новую группу-обсуждение и сразу цепляет её к каналу. Можно передать свой <code>title</code>.</td></tr>
+          <tr><td><code>link</code></td><td>Цепляет уже существующую группу — по <code>groupId</code>. Бот должен быть администратором и канала, и группы.</td></tr>
+          <tr><td><code>unlink</code></td><td>Отцепляет обсуждение. Сама группа остаётся: у неё свои участники и своя переписка.</td></tr>
+        </tbody>
+      </table>
+      <pre><code>// Канал → обсуждение → первый пост, одним скриптом
+const ch = (await post("createChannel", { title: "Пиццерия · новости" })).chat;
+const d  = (await post("setChatDiscussion", { channelId: ch.id, action: "create" })).discussion;
+await post("publishPost", { chatId: ch.id, text: "Открылись! Первая пицца — в подарок." });
+// комментарии к посту прилетят в d.id обычными сообщениями через /updates</code></pre>
+
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getChatDiscussion?channelId=…</div>
+      <p>Что сейчас прицеплено к каналу — чтобы скрипт мог проверить, а не гадать.</p>
+      <div class="doc-note">
+        <strong>Одна группа — одному каналу.</strong>
+        Группа, прицепленная к двум каналам, собирала бы два потока комментариев без всякой возможности их
+        различить, поэтому вторая привязка отвечает 409.
+      </div>
+
+      <h2 id="profile">Профиль бота</h2>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setMyProfile</div>
+      <p>
+        <code>name</code> и <code>description</code> — как бот представляется. Удобно править вместе с
+        выкладкой новой версии, а не руками в настройках.
+      </p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getMyStats</div>
+      <p>Сколько у бота чатов, сколько он отправил сообщений и со сколькими людьми пересекается.</p>
+
+      <h2 id="keyboard">Кнопки</h2>
+      <p>
+        <code>keyboard</code> — массив рядов, каждый ряд — массив кнопок. Нажатие отправляет боту обычное
+        сообщение с текстом из <code>data</code>, так что обрабатывается оно там же, где и всё остальное.
+        Поле можно назвать и <code>action</code> — сервер понимает обе формы.
+      </p>
+      <pre><code>await fetch(`${API}/sendMessage`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({
+    chatId,
+    text: "Что показать?",
+    keyboard: [
+      [{ text: "Погода", data: "/погода" }, { text: "Курс", data: "/курс" }],
+      [{ text: "Помощь", data: "/help" }],
+      // Кнопка, открывающая мини-приложение бота, а не отправляющая ответ:
+      [{ text: "Открыть магазин", app: "https://example.com/app/shop" }],
+      // Ссылка и цветная кнопка:
+      [{ text: "Сайт", url: "https://example.com" }, { text: "Купить", data: "/buy", style: "success" }],
+    ],
+  }),
+});</code></pre>
+      <p>
+        Кнопка с полем <code>app</code> открывает <a href="#apps">мини-приложение</a> бота — адрес должен
+        вести на тот же сайт, что указан в настройках приложения, иначе кнопка ничего не откроет.
+        Кнопка с полем <code>url</code> (только http/https) открывает ссылку. Поле <code>style</code> красит
+        кнопку: <code>primary</code>, <code>success</code> или <code>danger</code>.
+      </p>
+
+      <h2 id="media3">Альбомы, кружки и копирование</h2>
+      <p>
+        Всё, что умеет показывать приложение, теперь умеет отправлять и бот. Файлы — ссылкой:
+        своё хранилище у бота уже есть, а второй путь загрузки тянул бы за собой свои лимиты и чистку.
+      </p>
+      <table class="doc-table">
+        <thead><tr><th>Метод</th><th>Поля</th><th>Что делает</th></tr></thead>
+        <tbody>
+          <tr><td><code>sendVideo</code></td><td>chatId, url, caption?, replyToId?</td><td>Видео с проигрывателем.</td></tr>
+          <tr><td><code>sendVoice</code></td><td>chatId, url, durationSec?, caption?</td><td>Голосовое сообщение. Без <code>durationSec</code> шкала будет пустой.</td></tr>
+          <tr><td><code>sendVideoNote</code></td><td>chatId, url, durationSec?</td><td>Круглое видеосообщение.</td></tr>
+          <tr><td><code>sendMediaGroup</code></td><td>chatId, items[], caption?</td><td>Альбом до 10 файлов одним сообщением: <code>[{ kind: "image", url }, …]</code>. Виды: image, video, file, voice, video-note.</td></tr>
+          <tr><td><code>copyMessage</code></td><td>chatId, messageId</td><td>Отправить содержимое чужого сообщения от своего имени, без пометки «переслано». Копировать можно только из чатов, где бот состоит.</td></tr>
+          <tr><td><code>setMyAvatar</code></td><td>image</td><td>Картинка бота — ссылкой или <code>data:</code>-строкой. Имя и описание меняет <code>setMyProfile</code>.</td></tr>
+        </tbody>
+      </table>
+      <pre><code>await fetch(`${API}/sendMediaGroup`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({
+    chatId,
+    caption: "Новинки недели",
+    items: [
+      { kind: "image", url: "https://example.com/1.jpg" },
+      { kind: "image", url: "https://example.com/2.jpg" },
+      { kind: "video", url: "https://example.com/3.mp4" },
+    ],
+  }),
+});</code></pre>
+
+      <h2 id="apps">Мини-приложения</h2>
+      <p>
+        Мини-приложение — обычная веб-страница на вашем сервере, которая открывается прямо внутри Nexora,
+        поверх переписки, и <strong>знает, кто её открыл</strong>. Это способ дать боту настоящий интерфейс:
+        каталог, корзину, форму, игру — всё, для чего кнопок и текста мало.
+      </p>
+      <h3>Как включить</h3>
+      <p>
+        Настройки → Боты → ваш бот → Настройки бота → «Мини-приложение»: адрес страницы и надпись на кнопке.
+        Или из кода:
+      </p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setWebApp</div>
+      <pre><code>await fetch(`${API}/setWebApp`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({ url: "https://example.com/app", name: "Магазин" }),
+});</code></pre>
+      <p>
+        Только <code>https</code> (<code>http</code> разрешён для <code>localhost</code> — на нём и
+        отлаживают). Пустой <code>url</code> убирает приложение. После этого кнопка появляется в шапке чата
+        с ботом, и её же можно поставить в <a href="#keyboard">клавиатуру сообщения</a>.
+      </p>
+
+      <h3>На странице</h3>
+      <pre><code>&lt;script src="https://<em>ваш-nexora</em>/js/nexora-web-app.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const app = window.Nexora.WebApp;
+  app.ready();                                  // убрать индикатор загрузки
+  document.title = "Привет, " + app.user.name;  // кто открыл (без проверки — для вида)
+
+  app.MainButton.setText("Оформить заказ").show();
+  app.MainButton.onClick(async () =&gt; {
+    app.MainButton.showProgress();
+    await app.sendData(JSON.stringify({ items: 2 }));  // уйдёт боту, окно закроется
+  });
+&lt;/script&gt;</code></pre>
+      <table class="doc-table">
+        <thead><tr><th>Что есть</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td><code>initData</code></td><td>Подписанная строка — её и надо переслать боту для проверки. Целиком, не по частям.</td></tr>
+          <tr><td><code>user</code></td><td>Кто открыл: <code>id</code>, <code>name</code>, <code>username</code>, <code>isPremium</code>. Удобно для интерфейса, <strong>недостаточно для доверия</strong>.</td></tr>
+          <tr><td><code>colorScheme</code></td><td><code>"light"</code> или <code>"dark"</code> — тема, в которой человек сидит.</td></tr>
+          <tr><td><code>ready()</code></td><td>Сообщить, что страница отрисовалась.</td></tr>
+          <tr><td><code>close()</code></td><td>Закрыть окно.</td></tr>
+          <tr><td><code>sendData(данные)</code></td><td>Отправить данные боту и закрыть окно. До 4096 символов.</td></tr>
+          <tr><td><code>openLink(url)</code></td><td>Открыть внешнюю ссылку в настоящем браузере.</td></tr>
+          <tr><td><code>showAlert / showConfirm</code></td><td>Сообщение и вопрос «да/нет»; <code>showConfirm</code> возвращает промис с <code>true</code>/<code>false</code>.</td></tr>
+          <tr><td><code>MainButton</code></td><td>Нижняя кнопка на всю ширину: <code>setText</code>, <code>show</code>, <code>hide</code>, <code>enable</code>, <code>disable</code>, <code>showProgress</code>, <code>hideProgress</code>, <code>onClick</code>.</td></tr>
+        </tbody>
+      </table>
+      <div class="doc-note">
+        <strong><code>sendData</code> устроен честнее, чем в Telegram.</strong>
+        Там такое сообщение видит только бот, у человека в переписке не появляется ничего. Здесь это обычное
+        сообщение от самого человека — он видит в чате, что именно отправило приложение от его имени, а бот
+        получает его тем же <code>/updates</code>, что и всё остальное.
+      </div>
+
+      <h3>Приложение без своего сервера</h3>
+      <p>
+        Хостинга может не быть вовсе — тогда страницу хранит и раздаёт сам Nexora. Присылаете HTML,
+        получаете работающее приложение по адресу <code>/app/&lt;юзернейм бота&gt;</code>; скрипт
+        <code>nexora-web-app.js</code> подставляется автоматически.
+      </p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setWebAppCode</div>
+      <pre><code>await fetch(`${API}/setWebAppCode`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({
+    name: "Магазин",
+    code: `
+      &lt;h1&gt;Пиццерия&lt;/h1&gt;
+      &lt;button id="b"&gt;Заказать&lt;/button&gt;
+      &lt;script&gt;
+        const app = Nexora.WebApp;
+        app.ready();
+        document.getElementById("b").onclick = () =&gt; app.sendData("заказ: 1 пицца");
+      &lt;/script&gt;`,
+  }),
+});</code></pre>
+      <p>
+        Можно прислать и целый документ с <code>&lt;html&gt;</code>, и один фрагмент разметки — во втором
+        случае Nexora обернёт его сам. Пустой <code>code</code> убирает приложение. То же самое поле есть в
+        приложении: Настройки → Боты → Настройки бота → «Мини-приложение» → «Написать здесь».
+      </p>
+      <div class="doc-note">
+        <strong>Такая страница работает в песочнице.</strong>
+        Она отдаётся с адреса Nexora, поэтому её код специально лишён прав «своего»: ни сессионной куки, ни
+        доступа к <code>/api</code> от имени открывшего, ни общего с приложением хранилища
+        (<code>Content-Security-Policy: sandbox</code>). Всё, что ей нужно, она получает через
+        <code>Nexora.WebApp</code> — как и приложение на чужом домене. Свои запросы к своему серверу делать
+        можно: обычный <code>fetch</code> по абсолютному адресу с CORS.
+      </div>
+
+      <h3>Проверка, кто открыл</h3>
+      <p>
+        <code>initData</code> — строка вида <code>user=…&amp;chat_id=…&amp;bot_id=…&amp;auth_date=…&amp;hash=…</code>.
+        Всё, кроме <code>hash</code>, подписано ключом, который знают только Nexora и ваш токен, поэтому
+        подделать имя нельзя, а поверить содержимому без проверки — можно только зря. Алгоритм тот же, что в
+        Telegram Mini Apps:
+      </p>
+      <pre><code>import crypto from "node:crypto";
+
+function checkInitData(initData, token) {
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  const check = [...params.entries()]
+    .filter(([k]) =&gt; k !== "hash")
+    .sort(([a], [b]) =&gt; (a &lt; b ? -1 : 1))
+    .map(([k, v]) =&gt; `${k}=${v}`)
+    .join("\n");
+  const secret = crypto.createHmac("sha256", "NexoraWebAppData").update(token).digest();
+  const mine = crypto.createHmac("sha256", secret).update(check).digest("hex");
+  if (mine !== hash) return null;
+  return JSON.parse(params.get("user"));
+}</code></pre>
+      <p>Не хотите считать сами — отдайте строку серверу:</p>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/checkWebAppData</div>
+      <pre><code>const res = await fetch(`${API}/checkWebAppData`, {
+  method: "POST",
+  headers: auth,
+  body: JSON.stringify({ initData }),
+});
+const { ok, user, chatId } = await res.json();   // ok: false — подпись не сошлась</code></pre>
+      <div class="doc-note">
+        <strong>Проверяйте на своём сервере, а не в браузере.</strong>
+        Проверка в самой странице бессмысленна: тот, кто подделывает <code>initData</code>, подделает и её
+        результат. Подпись действительна сутки — старую, подсмотренную в чужой истории браузера, сервер
+        отвергнет.
+      </div>
+
+      <h2 id="commands">Команды</h2>
+      <p>
+        Список команд задаётся в приложении (Настройки → Боты → иконка списка) в формате BotFather —
+        по одной на строку:
+      </p>
+      <pre><code>start - Начать
+погода - Прогноз на сегодня
+help - Что я умею</code></pre>
+      <p>
+        Он показывается людям по кнопке «/» в чате с ботом. Сами команды приходят обычными сообщениями
+        с текстом <code>/погода</code> — отдельного типа события для них нет.
+      </p>
+      <div class="doc-method"><span class="doc-verb">GET</span> /api/bot-api/getMyCommands</div>
+      <div class="doc-method"><span class="doc-verb">POST</span> /api/bot-api/setMyCommands</div>
+      <p>
+        То же самое из программы — удобно обновлять список вместе с выкладкой новой версии бота, а не руками.
+        Ведущий слэш можно не писать, он всё равно срезается.
+      </p>
+      <pre><code>await fetch(`${API}/setMyCommands`, {
+  method: "POST", headers: auth,
+  body: JSON.stringify({ commands: [
+    { command: "start", description: "Начать" },
+    { command: "погода", description: "Прогноз на сегодня" },
+  ]}),
+});</code></pre>
+
+      <h2 id="editor">Редактор внутри приложения</h2>
+      <p>
+        Настройки → Боты → иконка кода. Внутри — настоящий редактор (подсветка синтаксиса, автодополнение
+        по Bot API, парные скобки, поиск, отмена), кнопка «Запустить» для проверки на тестовом сообщении и
+        консоль с логами вашего бота.
+      </p>
+      <p>
+        Код исполняется <strong>на сервере</strong>, при каждом входящем сообщении. Токен, хостинг и цикл
+        опроса не нужны вовсе.
+      </p>
+
+      <h3 id="handle">handleMessage</h3>
+      <p>Единственное требование к коду — определить эту функцию:</p>
+      <pre><code>async function handleMessage(msg, bot) {
+  if (msg.text === "/start") {
+    return bot.send("Привет! Напишите что-нибудь.");
+  }
+
+  // Можно ходить в чужие API прямо отсюда
+  const res = await fetch("https://api.example.com/weather?city=Moscow");
+  const data = await res.json();
+
+  await bot.send(`Сейчас ${data.temp}°`, {
+    keyboard: [[{ text: "Обновить", data: "/погода" }]],
+  });
+}</code></pre>
+      <table class="doc-table">
+        <thead><tr><th>Что доступно</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>msg</td><td>Входящее сообщение: <code>id</code>, <code>chatId</code>, <code>senderId</code>, <code>text</code>, <code>createdAt</code>.</td></tr>
+          <tr><td>bot.send(text, opts)</td><td>Ответить в тот же чат. <code>opts</code> — те же <code>keyboard</code> и <code>replyToId</code>.</td></tr>
+          <tr><td>bot.sendTo(chatId, text, opts)</td><td>Написать в другой чат, где бот состоит.</td></tr>
+          <tr><td>msg.type === "join_request"</td><td>Новая заявка на вступление в канал/группу, где бот — админ: <code>chatId</code>, <code>userId</code>, <code>userName</code>, <code>username</code>, <code>bio</code>.</td></tr>
+          <tr><td>bot.approveJoin(userId, chatId?) / bot.declineJoin(userId, chatId?)</td><td>Принять или отклонить заявку (по умолчанию — в чате из <code>msg</code>).</td></tr>
+          <tr><td>bot.joinRequests(chatId?)</td><td>Список ожидающих заявок.</td></tr>
+          <tr><td>fetch</td><td>Обычный fetch — запросы к внешним сервисам.</td></tr>
+          <tr><td>console.log / warn / error</td><td>Пишет в консоль редактора и в журнал бота.</td></tr>
+          <tr><td>setTimeout / clearTimeout</td><td>Задержки внутри обработчика.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="limits">Ограничения — читать до того, как писать</h3>
+      <p>
+        Поверхность намеренно узкая: <code>require</code>, <code>process</code>, файловая система, модули npm
+        и глобальные объекты Node недоступны.
+      </p>
+      <ul>
+        <li><strong>Состояние не сохраняется.</strong> Каждый вызов начинается с чистого листа: переменные не переживают следующее сообщение. Нужна память — храните её во внешнем сервисе через <code>fetch</code>, или пишите бота на своём сервере.</li>
+        <li><strong>300 мс непрерывной работы процессора.</strong> Ожидание (fetch, отправка) сюда не считается — у него свой потолок в 20 секунд на весь вызов. Ограничение жёсткое по неприятной причине: сервер однопоточный, и пока ваш синхронный код крутится, приложение не отвечает никому.</li>
+        <li><strong>20 секунд на вызов целиком.</strong> Медленный внешний API успеет ответить, зависший — нет.</li>
+      </ul>
+      <div class="doc-note danger">
+        <strong>Песочница — не защита от чужого кода.</strong>
+        В документации Node про модуль <code>vm</code> сказано прямо: это не средство безопасности. Здесь он
+        ограничивает случайный ущерб от <em>вашего собственного</em> кода — опечатки, бесконечного цикла,
+        забытого await. Не вставляйте туда скрипт от незнакомца: это ровно то же самое, что запустить у себя
+        чужой шелл-скрипт.
+      </div>
+
+      <h3 id="vscode">Писать в VS Code</h3>
+      <p>
+        Встроенный редактор — это редактор одного файла, а не среда разработки: без дерева проекта, отладчика,
+        npm-пакетов, git и расширений. Если нужно всё это — пишите бота у себя в VS Code как обычную программу
+        и подключайте его по HTTP API из первой половины страницы. Тогда доступно ровно всё, к чему вы привыкли:
+        любые зависимости, точки останова, тесты, своя база, деплой куда угодно.
+      </p>
+      <p>
+        Разница только в том, где живёт программа. Формат сообщений и отправка одинаковые: <code>bot.send()</code>
+        в редакторе и <code>POST /sendMessage</code> снаружи — это один и тот же вызов внутри.
+      </p>
+
+      <h2 id="errors">Ошибки</h2>
+      <table class="doc-table">
+        <thead><tr><th>Код</th><th>Когда</th></tr></thead>
+        <tbody>
+          <tr><td>400</td><td>Пустой <code>text</code> в sendMessage; ссылка на файл не <code>http(s)://</code>, не <code>data:</code> и не загрузка Nexora.</td></tr>
+          <tr><td>401</td><td>Нет заголовка Authorization или токен недействителен.</td></tr>
+          <tr><td>403</td><td>Писать нельзя: собеседник заблокировал бота или бот не админ канала.</td></tr>
+          <tr><td>404</td><td>Бот не состоит в этом чате либо чат не существует.</td></tr>
+          <tr><td>429</td><td>Слишком часто. Опрос раз в 1–2 секунды в лимиты укладывается с запасом.</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Ошибка внутри кода в редакторе не роняет ни сервер, ни бота: она попадает в журнал бота
+        (Настройки → Боты → код → консоль), а следующее сообщение обрабатывается как ни в чём не бывало.
+      </p>
+
+      <h2 id="objects">Объекты</h2>
+      <h3>Message</h3>
+      <table class="doc-table">
+        <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td>строка</td><td>Идентификатор сообщения — годится для <code>replyToId</code>.</td></tr>
+          <tr><td>chatId</td><td>строка</td><td>Чат, куда отвечать.</td></tr>
+          <tr><td>senderId</td><td>строка</td><td>Кто написал.</td></tr>
+          <tr><td>text</td><td>строка</td><td>Текст. У сообщения с вложением может быть пустым.</td></tr>
+          <tr><td>createdAt</td><td>строка, ISO 8601</td><td>Время. Оно же — следующее значение <code>after</code>.</td></tr>
+        </tbody>
+      </table>
+      <h3>Кнопка</h3>
+      <table class="doc-table">
+        <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>text</td><td>строка</td><td>Что написано на кнопке.</td></tr>
+          <tr><td>data</td><td>строка</td><td>Что придёт боту сообщением при нажатии.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="games">Игры: SDK внутри игры</h2>
+      <p>Полная инструкция по играм — на отдельной странице: <a href="/games">nexora.ru/games</a>.</p>
+      <p>
+        Игра в Nexora — одна HTML-страница (меню «Игры» → «Мои игры» → «Создать игру»). Она запускается в
+        изолированном окне без доступа к аккаунту и сайту, а с приложением общается через объект
+        <code>window.Nexora</code> — его вставлять не нужно, он уже есть.
+      </p>
+      <pre><code>// очки — по ходу игры и в конце (рекорд сохранится сам)
+Nexora.score(points);
+Nexora.gameOver(points);
+
+// кто играет и какая тема у приложения
+console.log(Nexora.player.name, Nexora.theme.dark, Nexora.theme.accent);
+
+// рекорды: лучший результат игрока и таблица (в чате, откуда открыли игру)
+const best = await Nexora.getBest();
+const top = await Nexora.getLeaderboard({ limit: 10 }); // [{ position, name, score, isMe }]
+
+Nexora.share();            // отправить «мой результат — N» с карточкой игры в чат
+Nexora.vibrate(40);        // вибрация на телефоне
+Nexora.close();            // закрыть игру</code></pre>
+      <table class="doc-table">
+        <thead><tr><th>Что</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><td>Nexora.score(n) / gameOver(n)</td><td>Текущий и итоговый счёт. Сохраняется лучший результат — общий и в чате, где отправили карточку игры.</td></tr>
+          <tr><td>Nexora.player</td><td><code>{ id, name }</code> игрока.</td></tr>
+          <tr><td>Nexora.theme / Nexora.chat</td><td><code>{ dark, accent }</code> — тема приложения; <code>{ id }</code> — чат, откуда открыли (или <code>null</code>).</td></tr>
+          <tr><td>await Nexora.getBest()</td><td>Лучший результат игрока.</td></tr>
+          <tr><td>await Nexora.getLeaderboard({ limit, chat })</td><td>Таблица рекордов; <code>chat: false</code> — общая, а не этого чата.</td></tr>
+          <tr><td>Nexora.share(text?)</td><td>Отправить результат в чат вместе с карточкой игры.</td></tr>
+          <tr><td>Nexora.vibrate(ms), Nexora.close()</td><td>Вибрация и закрытие игры.</td></tr>
+          <tr><td>localStorage</td><td>Работает как обычно — данные хранятся отдельно для каждой игры.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="game-api">Game API</h2>
+      <p>
+        HTTP-методы для разработчика игры: обновлять код из своего репозитория или CI, смотреть статистику и
+        ставить рекорды со своего сервера — так счёт нельзя накрутить в браузере. Токен — в редакторе игры,
+        кнопка «🔑 API-токен» (показывается один раз; новый отзывает прежний).
+      </p>
+      <pre><code>curl -H "Authorization: Bearer game_ВАШ_ТОКЕН" https://nexora.ru/api/game-api/getStats
+
+curl -X POST -H "Authorization: Bearer game_ВАШ_ТОКЕН" -H "Content-Type: application/json" \
+  -d '{"userId":"u_…","score":1500}' https://nexora.ru/api/game-api/setScore</code></pre>
+      <table class="doc-table">
+        <thead><tr><th>Метод</th><th>Параметры</th><th>Что делает</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /getGame</code></td><td>—</td><td>Игра и статистика.</td></tr>
+          <tr><td><code>POST /updateGame</code></td><td><code>code</code>, <code>title</code>, <code>description</code>, <code>emoji</code>, <code>isPublic</code></td><td>Обновить игру (переданные поля). Код — до 512 КБ.</td></tr>
+          <tr><td><code>GET /getStats</code></td><td>—</td><td><code>{ plays, players, topScore }</code>.</td></tr>
+          <tr><td><code>GET /getScores</code></td><td><code>chatId?</code>, <code>limit?</code></td><td>Таблица рекордов (общая или чата).</td></tr>
+          <tr><td><code>POST /setScore</code></td><td><code>userId</code>, <code>score</code>, <code>chatId?</code>, <code>force?</code></td><td>Записать результат. Без <code>force</code> — только если лучше прежнего; с <code>force</code> — как есть (сброс накрутки).</td></tr>
+          <tr><td><code>POST /deleteScore</code></td><td><code>userId</code></td><td>Удалить результаты игрока.</td></tr>
+        </tbody>
+      </table>
+      <p>Бот может отправить карточку игры в чат: <code>POST /api/bot-api/sendGame</code> с <code>chatId</code> и <code>gameId</code>
+        (встроенные игры: <code>builtin-2048</code>, <code>builtin-snake</code>, <code>builtin-flappy</code>).</p>
+
+      <p class="doc-foot">
+        Адрес API на этом развёртывании — <code>/api/bot-api</code> от корня сайта.
+        Вопросы и заявки на интеграцию — через <a href="/promo">страницу для партнёров</a>.
+      </p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

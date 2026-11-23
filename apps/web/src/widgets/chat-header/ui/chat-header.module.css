@@ -1,0 +1,302 @@
+/* Как .chat-header в public/styles/components.css (блок «шапка чата»). */
+.header {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  margin: 8px 8px 0;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: 0 4px 16px rgba(15, 35, 52, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Не даём кнопкам звонка и закрытия делить один пиксель на узких экранах. */
+@media (max-width: 700px) {
+  .header {
+    gap: 4px;
+    overflow: hidden;
+  }
+}
+
+/* .chat-header-back: только на телефоне, где список и чат — разные экраны. */
+.back {
+  display: none;
+  flex-shrink: 0;
+  padding: 6px;
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: color-mix(in srgb, var(--color-surface-alt) 76%, transparent);
+}
+
+@media (max-width: 720px) {
+  .back {
+    display: flex;
+  }
+}
+
+.saved {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.avatarStoryButton {
+  display: flex;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.avatarStoryRing {
+  display: flex;
+  padding: 2px;
+  border: 2px solid var(--color-muted);
+  border-radius: 50%;
+}
+
+.avatarStoryUnseen {
+  border-color: var(--color-accent);
+}
+
+.titles {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 21px;
+  white-space: nowrap;
+}
+
+/* Имя в приоритете: при нехватке места сначала уступают значки, имя не сжимается в ноль. */
+.titleText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title > :not(.titleText) {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Секретный чат — название зелёным (.secret-chat-title). */
+.secretTitle .titleText {
+  color: var(--color-success);
+}
+
+.lock {
+  display: flex;
+  color: var(--color-success);
+}
+
+.verified {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+/* Значки разработчика Nexora и Premium у собеседника (.developer-mini-badge, PremiumStar). */
+.developer {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.premium {
+  display: flex;
+  flex-shrink: 0;
+  color: #a259ff;
+}
+
+.muted,
+.online,
+.typing {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online,
+.typing {
+  color: var(--color-accent);
+}
+
+@media (max-width: 520px) {
+  .title {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .titles {
+    overflow: visible;
+  }
+}
+
+.info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.storyAction {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 13%, var(--color-surface));
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.storyAction:hover {
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface));
+}
+
+.storyAction:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+/* Как .info-toggle: на узком экране панель открывают из меню или по названию. */
+.infoToggle {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+/* На компьютере чат остаётся рядом со списком, поэтому его можно явно закрыть. */
+.desktopClose {
+  display: none;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--color-muted);
+}
+
+/* Кнопка поиска по чату — видна справа как в Telegram Web K. */
+.searchButton {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.searchButton:hover,
+.infoToggle:hover,
+.infoToggle[aria-pressed="true"],
+.desktopClose:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.searchButton,
+.infoToggle,
+.desktopClose {
+  background: color-mix(in srgb, var(--color-surface-alt) 70%, transparent);
+}
+
+@media (min-width: 721px) {
+  .infoToggle,
+  .desktopClose {
+    display: flex;
+  }
+}
+
+/* .icon-btn на телефоне — палец попадает (min 38 × 38). */
+@media (max-width: 640px) {
+  .header {
+    min-height: 56px;
+    margin: 6px 6px 0;
+    border-radius: 20px;
+  }
+
+  .infoToggle {
+    width: 38px;
+    height: 38px;
+  }
+
+  .actions { gap: 2px; }
+}
+
+/* На узких desktop-окнах шапка может содержать три действия звонка плюс меню,
+   информацию и закрытие. Уменьшаем только внешние кнопки, чтобы ссылка не
+   наезжала на X и название чата не исчезало целиком. */
+@media (min-width: 641px) and (max-width: 1100px) {
+  .header {
+    gap: 5px;
+    padding-right: 4px;
+    padding-left: 6px;
+  }
+
+  .infoToggle,
+  .desktopClose {
+    width: 32px;
+    height: 32px;
+  }
+}

@@ -1,0 +1,144 @@
+import { Injectable } from "@nestjs/common";
+import { isAdminPhone } from "../../common/config/accounts.js";
+import { normalizePhone } from "../../common/lib/validators.js";
+import { ApiError } from "../../common/errors/api-error.js";
+import { checkUsername } from "../../legacy/legacy.js";
+import { publicUser } from "../users/lib/user.presenter.js";
+import { normalizeUsername } from "../users/lib/username.js";
+import { StarsRepository } from "../users/stars.repository.js";
+import { UsersRepository } from "../users/users.repository.js";
+import { tell } from "./lib/tell.js";
+import type { ListingDto, TransferListingDto } from "./model/schemas/usernames.schema.js";
+import { UsernameAuctionsRepository } from "./username-auctions.repository.js";
+import { UsernameListingsRepository } from "./username-listings.repository.js";
+
+// Продажа своего ника за звёзды (/api/usernames/market) — как server/routes/usernames.js.
+const MIN_LISTING_STARS = 10;
+
+async function temporaryUsername(): Promise<string> {
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = `user_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`.slice(0, 32);
+    if (!(await checkUsername(candidate))) return candidate;
+  }
+  throw new ApiError(503, "Не удалось подобрать временный юзернейм — попробуйте ещё раз");
+}
+
+@Injectable()
+export class UsernameMarketService {
+  public constructor(
+    private readonly listings: UsernameListingsRepository,
+    private readonly auctions: UsernameAuctionsRepository,
+    private readonly users: UsersRepository,
+    private readonly stars: StarsRepository
+  ) {}
+
+  /** Открытые объявления; те, чей продавец уже сменил ник, снимаются. */
+  public list(userId: string) {
+    const alive = [];
+    for (const l of this.listings.listOpen()) {
+      const seller = this.users.findById(l.sellerId);
+      if (!seller || !this.users.listUsernames(seller.id, seller.username).some((item) => item.username.toLowerCase() === l.username.toLowerCase())) {
+        this.listings.close(l.id, "withdrawn");
+        continue;
+      }
+      alive.push({ ...l, seller: publicUser(seller), mine: l.sellerId === userId });
+    }
+    return { listings: alive, owned: this.listings.listOwned(userId), balance: this.stars.balanceOf(userId) };
+  }
+
+  public create(userId: string, { priceStars, username: requestedUsername }: ListingDto) {
+    const owner = this.users.findById(userId);
+    if (!owner || !isAdminPhone(owner.phone)) throw new ApiError(403, "Выставлять юзернеймы на продажу может только администратор");
+    const owned = owner ? this.users.listUsernames(userId, owner.username) : [];
+    const username = normalizeUsername(requestedUsername || owner?.username);
+    if (!username) throw new ApiError(400, "Сначала займите юзернейм — продавать нечего");
+    if (!owned.some((item) => item.username.toLowerCase() === username.toLowerCase())) throw new ApiError(403, "Этот юзернейм вам не принадлежит");
+    if (!Number.isFinite(priceStars) || priceStars < MIN_LISTING_STARS) throw new ApiError(400, `Цена — от ${MIN_LISTING_STARS} ⭐`);
+    if (this.listings.findOpenByUsername(username)) throw new ApiError(409, "Этот юзернейм уже выставлен");
+    if (this.auctions.findOpenByUsername(username)) throw new ApiError(409, "Этот юзернейм сейчас на аукционе");
+
+    return { listing: this.listings.create(username, userId, priceStars) };
+  }
+
+  public withdraw(userId: string, id: string) {
+    const listing = this.listings.find(id);
+    if (!listing || listing.status !== "open") throw new ApiError(404, "Объявление не найдено");
+    if (listing.sellerId !== userId) throw new ApiError(403, "Снять объявление может только продавец");
+    return { listing: this.listings.close(listing.id, "withdrawn") };
+  }
+
+  public async buy(userId: string, id: string) {
+    const listing = this.listings.find(id);
+    if (!listing || listing.status !== "open") throw new ApiError(404, "Объявление не найдено");
+    if (listing.sellerId === userId) throw new ApiError(400, "Это ваше объявление");
+
+    const seller = this.users.findById(listing.sellerId);
+    if (!seller || !this.users.listUsernames(seller.id, seller.username).some((item) => item.username.toLowerCase() === listing.username.toLowerCase())) {
+      this.listings.close(listing.id, "withdrawn");
+      throw new ApiError(410, "Продавец больше не владеет этим юзернеймом");
+    }
+    // Подбираем замену до списания звёзд: после оплаты продавец не должен остаться
+    // без адреса даже при редкой коллизии генератора.
+    const sellerOwned = this.users.listUsernames(listing.sellerId, seller?.username);
+    if (seller?.username?.toLowerCase() === listing.username.toLowerCase()) {
+      const replacement = sellerOwned.find((item) => item.username.toLowerCase() !== listing.username.toLowerCase());
+      if (replacement) this.users.setPrimaryUsername(seller.id, replacement.username);
+      else this.users.setUsername(seller.id, await temporaryUsername());
+    }
+    // Списание и закрытие объявления — без await между ними: иначе два одновременных
+    // запроса получали юзернейм оба или бесплатно.
+    if (!this.stars.spend(userId, listing.priceStars)) throw new ApiError(402, `Не хватает звёзд: нужно ${listing.priceStars} ⭐`);
+    if (this.listings.find(listing.id)?.status !== "open") {
+      this.stars.add(userId, listing.priceStars);
+      throw new ApiError(409, "Юзернейм уже купили");
+    }
+    this.listings.close(listing.id, "sold", userId);
+    this.stars.add(seller.id, listing.priceStars);
+
+    this.users.removeUsername(listing.username);
+    // id продажи отмечает имя как коллекционное; оно добавляется к аккаунту покупателя,
+    // не затирая его текущий основной юзернейм.
+    if (!this.users.listUsernames(userId, this.users.findById(userId)?.username).some((item) => item.username.toLowerCase() === listing.username.toLowerCase())) {
+      this.users.addUsername(userId, listing.username, true);
+    }
+    const buyer = this.users.findById(userId)!;
+
+    await tell(
+      seller.id,
+      `💰 Ваш юзернейм @${listing.username} продан за ${listing.priceStars} ⭐.`,
+      "username sale notice"
+    );
+    await tell(userId, `🎉 Юзернейм @${listing.username} теперь ваш — списано ${listing.priceStars} ⭐.`, "username sale notice");
+
+    return { ok: true, username: listing.username, user: publicUser(buyer), balance: this.stars.balanceOf(userId) };
+  }
+
+  /** Бесплатная явная передача коллекционного имени — только его текущим владельцем. */
+  public async transfer(userId: string, id: string, { target }: TransferListingDto) {
+    const listing = this.listings.find(id);
+    if (!listing || listing.status !== "sold" || listing.buyerId !== userId) throw new ApiError(404, "Купленный юзернейм не найден");
+    const value = target.trim().replace(/^@/, "");
+    const recipient = this.users.findByUsername(value) ?? this.users.findByPhone(normalizePhone(target));
+    if (!recipient) throw new ApiError(404, "Получатель не найден");
+    if (recipient.id === userId) throw new ApiError(400, "Юзернейм уже принадлежит этому аккаунту");
+    if (recipient.isBot) throw new ApiError(400, "Передать юзернейм боту нельзя");
+
+    const owner = this.users.findById(userId);
+    const ownerNames = this.users.listUsernames(userId, owner?.username);
+    if (owner?.username?.toLowerCase() === listing.username.toLowerCase()) {
+      const replacement = ownerNames.find((item) => item.username.toLowerCase() !== listing.username.toLowerCase());
+      if (replacement) this.users.setPrimaryUsername(userId, replacement.username);
+      else this.users.setUsername(userId, await temporaryUsername());
+    }
+    this.users.removeUsername(listing.username);
+    const previous = recipient.username || "";
+    if (!this.users.listUsernames(recipient.id, recipient.username).some((item) => item.username.toLowerCase() === listing.username.toLowerCase())) {
+      this.users.addUsername(recipient.id, listing.username, true);
+    }
+    const updated = this.users.findById(recipient.id)!;
+    this.listings.transferBuyer(listing.id, recipient.id);
+    await tell(recipient.id, `🎁 Вам передали коллекционный юзернейм @${listing.username}. Прежний @${previous || "—"} освобождён.`, "username transfer notice");
+    await tell(userId, `✅ Вы передали @${listing.username} пользователю ${recipient.name}. Вернуть его можно только новой передачей владельца.`, "username transfer notice");
+    return { ok: true, username: listing.username, user: publicUser(updated) };
+  }
+}

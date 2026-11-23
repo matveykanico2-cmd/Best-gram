@@ -1,0 +1,80 @@
+.avatar {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.image,
+.video,
+.fallback,
+.stickerWrap,
+.emojiAvatar {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.video {
+  display: block;
+}
+
+.stickerWrap {
+  overflow: hidden;
+  object-fit: contain;
+  background: var(--color-accent);
+  display: grid;
+  place-items: center;
+}
+
+.stickerWrap[style*="transparent"],
+.emojiAvatar[style*="transparent"],
+.fallback[style*="transparent"] {
+  background: transparent !important;
+}
+
+.emojiAvatar {
+  overflow: hidden;
+}
+
+.emojiAvatar > span {
+  display: grid;
+  place-items: center;
+}
+
+.sticker {
+  display: block;
+  max-width: 84%;
+  max-height: 84%;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.fallback {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+  user-select: none;
+}
+
+.emojiBg {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.online {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}

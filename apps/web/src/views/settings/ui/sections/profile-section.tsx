@@ -1,0 +1,525 @@
+import { useQuery } from "@tanstack/react-query";
+import { type CSSProperties, Suspense, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+
+import { AvatarViewer, TABS } from "@/widgets/user-profile";
+
+import { ProfileUsernames, usernamesQueries } from "@/features/usernames-market";
+
+import { giftApi, GiftArt, type ReceivedGift } from "@/entities/gift";
+import { type SelfUser, useSession, useUpdateSelf } from "@/entities/session";
+import { bannerBackground, openUserProfile, PremiumStar, PROFILE_BANNERS, ProfileStatusBadge, ProfileTrackCard } from "@/entities/user";
+
+import { ApiError, uploadFile } from "@/shared/api";
+import { errorText } from "@/shared/lib/error-text";
+import { fileToImageUpload, mediaDuration } from "@/shared/lib/image";
+import { lazyView } from "@/shared/lib/lazy-view";
+import { Avatar, BirthdayField, Button, Icon, PhoneField, SettingsPage, SettingsSection, TextField, toast } from "@/shared/ui";
+
+import { addProfileTrack, clearProfileTracks, removeProfileTrack, setMainProfileTrack } from "../../api/profile-api";
+import { updateProfile } from "../../api/settings-api";
+import { AVATAR_COLORS, NAME_COLORS } from "../../lib/profile-colors";
+import { PhonePasswordDialog } from "../phone-password-dialog";
+import { StatusDialog } from "../status-dialog";
+
+import { ProfileEmojiAvatar } from "./profile-emoji";
+import { ProfileLinksEditor } from "./profile-links-editor";
+import profileStyles from "./profile-section.module.css";
+import styles from "./sections.module.css";
+
+// Конструктор аватара грузится только по кнопке «Собрать аватар».
+const AvatarConstructorDialog = lazyView(() => import("@/features/avatar-constructor").then((m) => m.AvatarConstructorDialog));
+
+const PHONE_NEEDS_PASSWORD = "Чтобы сменить номер, введите пароль от аккаунта";
+const MAX_TRACKS = 20;
+
+/** «Изменить профиль» — renderProfile. */
+export function ProfileSection() {
+  const me = useSession().data?.user;
+  return me ? <Profile me={me} /> : null;
+}
+
+type Fields = { name: string; lastName: string; username: string; phone: string; bio: string; birthday: string; greetingStickerId?: string };
+
+function Profile({ me }: { me: SelfUser }) {
+  const navigate = useNavigate();
+  const updateSelf = useUpdateSelf();
+  const lastName0 = me.lastName ?? "";
+  const [firstName, setFirstName] = useState(() => (lastName0 && me.name.endsWith(` ${lastName0}`) ? me.name.slice(0, -(lastName0.length + 1)) : me.name));
+  const [lastName, setLastName] = useState(lastName0);
+  const [username, setUsername] = useState(me.username ?? "");
+  const [phone, setPhone] = useState(me.phone ?? "");
+  const [bio, setBio] = useState(me.bio ?? "");
+  const [birthday, setBirthday] = useState<{ iso: string | null; error: string | null }>({ iso: me.birthday ?? "", error: null });
+  const [saved, setSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [phoneAsk, setPhoneAsk] = useState<Fields | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [constructorOpen, setConstructorOpen] = useState(false);
+  const usernames = useQuery(usernamesQueries.mine()).data?.usernames ?? [];
+  const usernameLabel = usernames.length
+    ? usernames.slice().sort((a, b) => Number(b.primary) - Number(a.primary)).map((item) => `@${item.username}`).join(", ")
+    : me.username
+      ? `@${me.username}`
+      : "";
+  const firstGalleryAvatar = me.avatarImages[0] as { poster?: unknown; url?: unknown } | undefined;
+  // В старых профилях avatarImage мог быть пустым, хотя галерея уже сохранена.
+  // Показываем первую запись галереи вместо буквенного fallback.
+  const profileAvatarImage = me.avatarImage ?? (typeof firstGalleryAvatar?.poster === "string" ? firstGalleryAvatar.poster : typeof firstGalleryAvatar?.url === "string" ? firstGalleryAvatar.url : null);
+
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 1500);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  // Поле профиля сразу на сервер (цвет, баннер): не сохранилось — прежнее значение и тост.
+  const saveField = async (patch: Partial<SelfUser>, fallback: string) => {
+    const before = Object.fromEntries(Object.keys(patch).map((k) => [k, me[k as keyof SelfUser]])) as Partial<SelfUser>;
+    updateSelf(patch);
+    try {
+      await updateProfile(me.id, patch);
+    } catch (err) {
+      updateSelf(before);
+      toast(errorText(err, fallback), { error: true });
+    }
+  };
+
+  const applySaved = (user: SelfUser) => {
+    updateSelf({ name: user.name, lastName: user.lastName ?? "", username: user.username, phone: user.phone, bio: user.bio ?? "", birthday: user.birthday ?? "" });
+    setUsername(user.username ?? "");
+    setBio(user.bio ?? "");
+    setSaved(true);
+  };
+
+  const save = async () => {
+    setProfileError(null);
+    if (birthday.error || birthday.iso === null) {
+      setProfileError(`Дата рождения: ${(birthday.error ?? "неверная дата").toLowerCase()}`);
+      return;
+    }
+    const fields: Fields = { name: [firstName.trim(), lastName.trim()].filter(Boolean).join(" "), lastName: lastName.trim(), username, phone, bio, birthday: birthday.iso, greetingStickerId: me.greetingStickerId ?? "" };
+    try {
+      applySaved(await updateProfile(me.id, fields));
+    } catch (err) {
+      // Номер изменился — сервер просит пароль от аккаунта.
+      if (err instanceof ApiError && err.status === 400 && err.message === PHONE_NEEDS_PASSWORD) setPhoneAsk(fields);
+      else setProfileError(errorText(err, "Не удалось сохранить"));
+    }
+  };
+
+  const nameColorValue = me.nameColor ? NAME_COLORS[me.nameColor] : undefined;
+  const pickNameColor = (key: string | null) => {
+    if (!me.isPremium) {
+      toast("Цвет имени — возможность Nexora Premium");
+      void navigate("/settings/premium");
+      return;
+    }
+    void saveField({ nameColor: key ?? undefined }, "Не удалось сохранить цвет");
+  };
+
+  return (
+    <SettingsPage>
+      <div className={profileStyles.header}>
+        <button type="button" className={profileStyles.avatarButton} aria-label="Фото профиля" onClick={() => setAvatarOpen(true)}>
+          <Avatar name={[firstName, lastName].filter(Boolean).join(" ") || "?"} color={me.avatarColor} image={profileAvatarImage} emoji={me.avatarEmoji} size={120} />
+          <span className={profileStyles.avatarEdit}>
+            <Icon name="Edit" size={12} />
+          </span>
+          {me.avatarImages.length > 1 ? <span className={profileStyles.avatarCount}>{me.avatarImages.length}</span> : null}
+        </button>
+        <p className={profileStyles.name}>
+          <span>{me.name || "Без имени"}</span>
+          {me.isDeveloper ? (
+            <span className={profileStyles.developer} title="Разработчик Nexora">
+              <Icon name="Code" size={16} />
+            </span>
+          ) : null}
+          {me.isPremium ? <PremiumStar size={20} /> : null}
+          <ProfileStatusBadge user={me} size={18} />
+        </p>
+        <p className={`${profileStyles.sub} ${styles.mono}`}>{me.phone || me.email}</p>
+        <Button variant="link" onClick={() => setConstructorOpen(true)}>
+          Собрать аватар
+        </Button>
+      </div>
+
+      <ProfileEmojiAvatar me={me} />
+
+      <ProfileUsernames />
+
+      <SettingsSection title="Предпросмотр профиля" caption="Так ваш профиль видят люди, которым разрешён просмотр.">
+        <div className={profileStyles.profilePreview}>
+          <Avatar name={me.name || "?"} color={me.avatarColor} image={profileAvatarImage} emoji={me.avatarEmoji} size={76} />
+          <p className={profileStyles.profilePreviewName}>{me.name || "Без имени"}</p>
+          <p className={profileStyles.profilePreviewStatus}>{me.isGuest ? "в сети · Гость" : "в сети"}</p>
+          {me.username ? (
+            <p className={`${profileStyles.profilePreviewUsernames} ${styles.mono}`}>{usernameLabel}</p>
+          ) : null}
+          {me.bio ? <p className={profileStyles.profilePreviewBio}>{me.bio}</p> : null}
+          <Button variant="secondary" onClick={() => openUserProfile(me.id)}>Открыть полный профиль</Button>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Цвет аватара">
+          <p className={`${styles.hint} ${profileStyles.pad}`}>Фон букв, смайла или стикера меняется отдельно и не сбрасывает содержимое аватара.</p>
+          <div className={profileStyles.colorGrid}>
+            {AVATAR_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={[profileStyles.colorSwatch, c === "transparent" && profileStyles.colorTransparent, me.avatarColor === c && profileStyles.colorActive].filter(Boolean).join(" ")}
+                style={{ background: c }}
+                title={c === "transparent" ? "Прозрачный фон" : "Выбрать цвет"}
+                aria-label={c === "transparent" ? "Прозрачный фон" : `Цвет ${c}`}
+                aria-pressed={me.avatarColor === c}
+                onClick={() => void saveField({ avatarColor: c }, "Не удалось сохранить цвет")}
+              />
+            ))}
+          </div>
+      </SettingsSection>
+
+      <BannerPicker me={me} onSave={(banner) => void saveField({ profileBanner: banner ?? undefined }, "Не удалось сохранить баннер")} />
+
+      <SettingsSection title="Цвет имени" caption={me.isPremium ? "Цвет имени видят все участники групп." : "Выбирать цвет имени можно с Nexora Premium."}>
+        <div className={profileStyles.namePreview}>
+          <div className={profileStyles.nameBubble}>
+            <span className={profileStyles.nameColor} style={nameColorValue ? ({ "--name-light": nameColorValue.light, "--name-dark": nameColorValue.dark } as CSSProperties) : undefined}>
+              {me.name || "Вы"}
+            </span>
+            <span>Так ваше имя увидят в группах</span>
+          </div>
+        </div>
+        <div className={profileStyles.nameGrid}>
+          <button type="button" className={`${profileStyles.nameSwatch} ${profileStyles.nameNone}${me.nameColor ? "" : ` ${profileStyles.colorActive}`}`} title="Без цвета" aria-label="Без цвета" onClick={() => pickNameColor(null)}>
+            <Icon name="X" size={16} />
+          </button>
+          {Object.entries(NAME_COLORS).map(([key, c]) => (
+            <button
+              key={key}
+              type="button"
+              className={[profileStyles.nameSwatch, me.nameColor === key && profileStyles.nameActive, !me.isPremium && profileStyles.locked].filter(Boolean).join(" ")}
+              style={{ "--name-light": c.light, "--name-dark": c.dark } as CSSProperties}
+              title={me.isPremium ? c.label : `${c.label} — с Premium`}
+              aria-label={me.isPremium ? c.label : `${c.label} — с Premium`}
+              onClick={() => pickNameColor(key)}
+            >
+              {me.isPremium ? null : <Icon name="Lock" size={12} />}
+            </button>
+          ))}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Имя</span>
+          <TextField value={firstName} maxLength={64} onChange={(e) => setFirstName(e.target.value)} />
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Фамилия</span>
+          <TextField value={lastName} placeholder="необязательно" maxLength={60} onChange={(e) => setLastName(e.target.value)} />
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Юзернейм</span>
+          <TextField className={profileStyles.usernameInput} value={username} maxLength={32} autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))} />
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Телефон</span>
+          <PhoneField initial={me.phone ?? ""} onChange={setPhone} />
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>О себе</span>
+          <textarea className={styles.textarea} rows={3} value={bio} maxLength={300} onChange={(e) => setBio(e.target.value)} />
+          <span className={`${styles.hint} ${profileStyles.counter}`}>{300 - bio.length}</span>
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Дата рождения</span>
+          <BirthdayField value={me.birthday ?? ""} onChange={(iso, error) => setBirthday({ iso, error })} />
+          {birthday.error ? <span className={styles.error}>{birthday.error}</span> : <span className={styles.hint}>Друзья смогут поздравить вас, отправить подарок, звёзды или Premium.</span>}
+        </label>
+      </SettingsSection>
+
+      <SettingsSection title="Статус">
+        <div className={profileStyles.statusRow}>
+          <div className={profileStyles.statusInfo}>
+            <p className={profileStyles.rowTitle}>Значок рядом с именем</p>
+            <p className={styles.hint}>{me.isPremium ? "До 5 своих статусов — свой или из готовых." : "1 слот — с Premium будет 5."}</p>
+          </div>
+          <Button variant="secondary" className={profileStyles.statusButton} onClick={() => setStatusOpen(true)}>
+            {me.statusIcon ? "Изменить" : "Выбрать"}
+          </Button>
+        </div>
+      </SettingsSection>
+
+      <NameDecorations me={me} onChanged={(giftsReceived) => updateSelf({ giftsReceived })} onOpenStickerPicker={() => setStatusOpen(true)} />
+
+      <ProfileLinksEditor me={me} />
+
+      <SettingsSection title="Вкладка профиля по умолчанию" caption="Её первой увидят люди, открывшие ваш профиль. Если раздел пуст, откроется ближайший доступный.">
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Показывать первой</span>
+          <select
+            className={styles.select}
+            aria-label="Вкладка профиля по умолчанию"
+            value={me.profileDefaultTab ?? "media"}
+            onChange={(event) => void saveField({ profileDefaultTab: event.target.value as SelfUser["profileDefaultTab"] }, "Не удалось сохранить вкладку")}
+          >
+            {TABS.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+          </select>
+        </label>
+      </SettingsSection>
+
+      <ProfileTracks me={me} />
+
+      {profileError ? <p className={styles.error}>{profileError}</p> : null}
+      <Button className={profileStyles.save} onClick={() => void save()}>
+        {saved ? "Сохранено ✓" : "Сохранить"}
+      </Button>
+
+      {statusOpen ? <StatusDialog onClose={() => setStatusOpen(false)} /> : null}
+      {constructorOpen ? (
+        <Suspense fallback={null}>
+          <AvatarConstructorDialog onDone={(u) => updateSelf(u as Partial<SelfUser>)} onClose={() => setConstructorOpen(false)} />
+        </Suspense>
+      ) : null}
+      {avatarOpen ? <AvatarViewer user={me} canEdit onChange={(u) => updateSelf({ ...(u as Partial<SelfUser>), avatarEmoji: (u as Partial<SelfUser>).avatarEmoji })} onClose={() => setAvatarOpen(false)} /> : null}
+      {phoneAsk ? (
+        <PhonePasswordDialog
+          onClose={() => setPhoneAsk(null)}
+          onSubmit={async (currentPassword) => {
+            applySaved(await updateProfile(me.id, { ...phoneAsk, currentPassword }));
+            setPhoneAsk(null);
+          }}
+        />
+      ) : null}
+    </SettingsPage>
+  );
+}
+
+function NameDecorations({ me, onChanged, onOpenStickerPicker }: { me: SelfUser; onChanged: (giftsReceived: ReceivedGift[]) => void; onOpenStickerPicker: () => void }) {
+  const [busyGift, setBusyGift] = useState<string | null>(null);
+  // Старые сессии и гостевые ответы могут не содержать новую полку подарков.
+  // Настройки профиля должны оставаться рабочими до следующего обновления сессии.
+  const gifts = (Array.isArray(me.giftsReceived) ? me.giftsReceived : []) as ReceivedGift[];
+  const visibleGifts = gifts.filter((gift) => !gift.custom);
+  const pinned = visibleGifts.filter((gift) => gift.pinned);
+  const toggleGift = async (gift: ReceivedGift) => {
+    if (busyGift) return;
+    setBusyGift(gift.id);
+    try {
+      const result = await giftApi.setPinned(gift.id, !gift.pinned);
+      onChanged(result.user.giftsReceived);
+    } catch (err) {
+      toast(errorText(err, "Не удалось изменить оформление имени"), { error: true });
+    } finally {
+      setBusyGift(null);
+    }
+  };
+  return (
+    <SettingsSection title="Оформление имени" caption="Выберите, что показывать рядом с вашим именем в профиле.">
+      <div className={profileStyles.decorationSection}>
+        <div className={profileStyles.decorationHeader}>
+          <div>
+            <p className={profileStyles.rowTitle}>Стикер рядом с именем</p>
+            <p className={profileStyles.sub}>Стикер выбирается из подключённых стикерпаков.</p>
+          </div>
+          <Button variant="secondary" onClick={onOpenStickerPicker}>Настроить</Button>
+        </div>
+        {visibleGifts.length ? (
+          <>
+            <p className={profileStyles.rowTitle}>Подарки рядом с именем</p>
+            <div className={profileStyles.decorationGrid} aria-label="Подарки рядом с именем">
+              {visibleGifts.map((gift) => (
+                <button
+                  key={gift.id}
+                  type="button"
+                  className={gift.pinned ? `${profileStyles.decorationGift} ${profileStyles.decorationGiftActive}` : profileStyles.decorationGift}
+                  aria-pressed={!!gift.pinned}
+                  title={gift.pinned ? `Открепить ${gift.name}` : `Закрепить ${gift.name}`}
+                  disabled={busyGift === gift.id}
+                  onClick={() => void toggleGift(gift)}
+                >
+                  <GiftArt gift={gift} size={54} replay={false} />
+                  <span>{gift.name}</span>
+                </button>
+              ))}
+            </div>
+            <p className={profileStyles.sub}>{pinned.length ? `Закреплено: ${pinned.length}` : "Нажмите на подарок, чтобы закрепить его рядом с именем."}</p>
+          </>
+        ) : (
+          <p className={profileStyles.sub}>Полученные подарки появятся здесь. Их можно будет закрепить рядом с именем.</p>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
+/** Баннер профиля: встроенный фон или своё фото. */
+function BannerPicker({ me, onSave }: { me: SelfUser; onSave: (banner: { id: string; url?: string } | null) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // Локальное состояние выбранного баннера — применяется сразу при клике, не ждём ответа сервера.
+  const [selected, setSelected] = useState<{ id?: string; url?: string } | null>(me.profileBanner ?? null);
+  const current = bannerBackground(selected);
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const { url } = await uploadFile(await fileToImageUpload(file, 1600), "image");
+      const next = { id: "custom", url };
+      setSelected(next);
+      onSave(next);
+    } catch (err) {
+      toast(errorText(err, "Не удалось загрузить фото"), { error: true });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <SettingsSection title="Баннер профиля" caption="Фон в шапке вашего профиля — его видят все, кто открывает профиль.">
+      <div className={current ? profileStyles.bannerPreview : `${profileStyles.bannerPreview} ${profileStyles.bannerEmpty}`} style={current ? ({ "--tile-bg": current } as CSSProperties) : undefined}>
+        {current ? null : "Выберите фон или загрузите своё фото"}
+      </div>
+      <div className={profileStyles.bannerGrid}>
+        <button type="button" className={`${profileStyles.bannerTile} ${profileStyles.bannerAdd}`} disabled={uploading} onClick={() => fileInput.current?.click()}>
+          <Icon name="Image" size={16} />
+          {uploading ? "Загрузка…" : "Своё фото"}
+        </button>
+        <button type="button" className={`${profileStyles.bannerTile} ${profileStyles.bannerAdd}${selected?.id ? "" : ` ${profileStyles.bannerSelected}`}`} onClick={() => {
+          setSelected(null);
+          void onSave(null);
+        }}>
+          <Icon name="X" size={14} />
+          Без баннера
+        </button>
+        {PROFILE_BANNERS.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            className={selected?.id === b.id ? `${profileStyles.bannerTile} ${profileStyles.bannerSelected}` : profileStyles.bannerTile}
+            title={b.label}
+            aria-pressed={selected?.id === b.id}
+            style={{ "--tile-bg": b.css } as CSSProperties}
+            onClick={() => {
+              setSelected({ id: b.id });
+              void onSave({ id: b.id });
+            }}
+          >
+            <span className={profileStyles.bannerLabel}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void upload(file);
+        }}
+      />
+    </SettingsSection>
+  );
+}
+
+type Track = { url: string; name?: string };
+
+/** Музыка в профиле: несколько треков, первый — основной (карточкой), остальные — списком. */
+function ProfileTracks({ me }: { me: SelfUser }) {
+  const updateSelf = useUpdateSelf();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const tracks = (me.profileTracks.length ? me.profileTracks : me.profileTrack ? [me.profileTrack] : []) as Track[];
+
+  const apply = (user: { profileTrack: unknown; profileTracks: unknown[] }) => {
+    updateSelf({ profileTrack: user.profileTrack ?? null, profileTracks: user.profileTracks ?? [] });
+  };
+  const run = async (fn: () => Promise<void>, failText: string) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorText(err, failText));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Можно выбрать сразу несколько: добавляем по очереди, последний выбранный — основной.
+  const addFiles = (files: File[]) =>
+    run(async () => {
+      for (const file of files) {
+        const duration = await mediaDuration(file);
+        const uploaded = await uploadFile(file, "profile-track");
+        apply((await addProfileTrack({ url: uploaded.url, name: uploaded.name, size: uploaded.size, mimeType: uploaded.mimeType, duration })).user);
+      }
+    }, "Не удалось загрузить трек");
+
+  return (
+    <SettingsSection title="Музыка в профиле">
+      <p className={`${styles.hint} ${profileStyles.pad}`}>Треки видны всем, кто открывает ваш профиль: основной — карточкой, остальные — списком по нажатию на неё. До 20 треков.</p>
+      <div className={profileStyles.pad}>
+        <ProfileTrackCard tracks={tracks} />
+      </div>
+      <div className={profileStyles.trackList}>
+        {tracks.map((t, i) => (
+          <div key={`${t.url}-${i}`} className={profileStyles.trackRow}>
+            <span className={profileStyles.trackName}>{t.name || "Трек"}</span>
+            {i === 0 ? (
+              <span className={profileStyles.badge}>основной</span>
+            ) : (
+              <button
+                type="button"
+                className={styles.iconButton}
+                title="Сделать основным"
+                aria-label="Сделать основным"
+                disabled={busy}
+                onClick={() => void run(async () => apply((await setMainProfileTrack(i)).user), "Не удалось сделать основным")}
+              >
+                <Icon name="Star" size={16} />
+              </button>
+            )}
+            <button
+              type="button"
+              className={styles.iconButton}
+              title="Убрать"
+              aria-label="Убрать"
+              disabled={busy}
+              onClick={() => void run(async () => apply((await removeProfileTrack(i)).user), "Не удалось убрать трек")}
+            >
+              <Icon name="Trash" size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className={styles.actions}>
+        <Button variant="secondary" className={profileStyles.actionButton} disabled={busy || tracks.length >= MAX_TRACKS} onClick={() => fileInput.current?.click()}>
+          {busy ? "Загружаем…" : tracks.length ? "Добавить треки" : "Загрузить треки"}
+        </Button>
+        {tracks.length > 1 ? (
+          <Button variant="danger" className={profileStyles.actionButton} disabled={busy} onClick={() => void run(async () => apply((await clearProfileTracks()).user), "Не удалось убрать трек")}>
+            Убрать все
+          </Button>
+        ) : null}
+      </div>
+      {error ? <p className={styles.error}>{error}</p> : null}
+      <input
+        ref={fileInput}
+        type="file"
+        accept="audio/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (files.length) void addFiles(files);
+        }}
+      />
+    </SettingsSection>
+  );
+}

@@ -1,0 +1,476 @@
+// Иконки и заставки Nexora для Capacitor-проектов. android/ и ios/ не в git и в CI
+// создаются заново (`npx cap add …`) — со стандартной иконкой Capacitor. Готовые
+// ресурсы лежат в resources/ и копируются поверх: `node scripts/apply-native-resources.js [android|ios]`.
+const fs = require("fs");
+const path = require("path");
+
+const ROOT = path.join(__dirname, "..");
+// Пакет release-приложения Nexora для RuStore. Не меняйте его после первой
+// публикации: обновления должны иметь тот же applicationId и подпись.
+const ANDROID_APPLICATION_ID = "ru.nexora.messenger";
+const TARGETS = {
+  android: { from: "resources/android/res", to: "android/app/src/main/res" },
+  ios: { from: "resources/ios", to: "ios/App/App/Assets.xcassets" },
+};
+
+const wanted = process.argv.slice(2);
+for (const name of wanted.length ? wanted : Object.keys(TARGETS)) {
+  const target = TARGETS[name];
+  if (!target) throw new Error(`неизвестная платформа: ${name}`);
+  const to = path.join(ROOT, target.to);
+  if (!fs.existsSync(to)) {
+    console.log(`${name}: нет ${target.to} — сначала npx cap add ${name}`);
+    continue;
+  }
+  fs.cpSync(path.join(ROOT, target.from), to, { recursive: true });
+  console.log(`${name}: иконки и заставки → ${target.to}`);
+  markNativeVersion(name);
+  if (name === "ios") {
+    describeIosPermissions();
+    wireIosAppIcons();
+  }
+  if (name === "android") {
+    // Свой нативный код (MainActivity: «Назад», ссылки, звонки; экран звонка на lock screen;
+    // плагины SystemBars, AppIcon,
+    // IncomingCall; OfflineShell) поверх сгенерированного.
+    fs.cpSync(path.join(ROOT, "resources/android/java"), path.join(ROOT, "android/app/src/main/java/ru/nexora/app"), { recursive: true });
+    pinDebugSigningKey();
+    wireReleaseSigning();
+    setAndroidApplicationId();
+    setAppVersion();
+    dropPrecompressed(path.join(ROOT, "android/app/src/main/assets/public"));
+    wirePushNotifications();
+    wireIncomingCallActivity();
+    wireAndroidDeepLinks();
+    wireAndroidWebkit();
+    wireAndroidBuildCompatibility();
+    wireAndroidAppIcons();
+  }
+}
+
+// Экран звонка показывается поверх lock screen без WebView. Ответ запускает MainActivity
+// только после системной разблокировки телефона.
+function wireIncomingCallActivity() {
+  const manifestPath = path.join(ROOT, "android/app/src/main/AndroidManifest.xml");
+  let manifest = fs.readFileSync(manifestPath, "utf8");
+  if (manifest.includes(".IncomingCallActivity")) return;
+  const marker = /\s*<activity\b(?=[^>]*android:name="\.MainActivity")[^>]*>/;
+  const match = marker.exec(manifest);
+  const at = match ? match.index : -1;
+  if (at < 0) return;
+  const declaration = `        <activity
+            android:name=".IncomingCallActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+`;
+  manifest = manifest.slice(0, at) + declaration + manifest.slice(at);
+  fs.writeFileSync(manifestPath, manifest);
+  console.log("android: нативный экран входящего звонка поверх блокировки");
+}
+
+// Версия оболочки — в User-Agent («NexoraNative/1.0.2»): по ней lib/nativeUpdate.js
+// понимает, что вышла новая сборка, и предлагает обновиться.
+function markNativeVersion(name) {
+  const file = path.join(ROOT, name === "android" ? "android/app/src/main/assets/capacitor.config.json" : "ios/App/App/capacitor.config.json");
+  if (!fs.existsSync(file)) return;
+  const version = require(path.join(ROOT, "package.json")).version;
+  const config = JSON.parse(fs.readFileSync(file, "utf8"));
+  config.appendUserAgent = `NexoraNative/${version}`;
+  fs.writeFileSync(file, JSON.stringify(config, null, "\t"));
+  console.log(`${name}: версия оболочки ${version} в User-Agent`);
+}
+
+// Варианты иконки (scripts/gen-app-icons.mjs → resources/app-icons.json).
+function appIconIds() {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, "resources/app-icons.json"), "utf8"));
+}
+
+// Android: значок в лаунчере — у включённого activity-alias. Запуск (MAIN/LAUNCHER)
+// переносим с MainActivity на алиасы ".Icon_<id>"; включён стандартный, остальные
+// включает плагин AppIcon (resources/android/java/AppIconPlugin.java).
+function wireAndroidAppIcons() {
+  const manifestPath = path.join(ROOT, "android/app/src/main/AndroidManifest.xml");
+  let manifest = fs.readFileSync(manifestPath, "utf8");
+  if (manifest.includes(".Icon_")) return;
+  const launcher = /\s*<intent-filter>\s*<action android:name="android\.intent\.action\.MAIN" \/>\s*<category android:name="android\.intent\.category\.LAUNCHER" \/>\s*<\/intent-filter>/;
+  if (!launcher.test(manifest)) {
+    console.log("android: не нашёл MAIN/LAUNCHER у MainActivity — смена иконки не подключена");
+    return;
+  }
+  manifest = manifest.replace(launcher, "");
+  const { default: def, icons } = appIconIds();
+  const aliases = icons
+    .map((id) => {
+      const res = id === def ? "ic_launcher" : `ic_launcher_${id}`;
+      return `        <activity-alias
+            android:name=".Icon_${id}"
+            android:targetActivity=".MainActivity"
+            android:enabled="${id === def}"
+            android:exported="true"
+            android:label="@string/title_activity_main"
+            android:icon="@mipmap/${res}"
+            android:roundIcon="@mipmap/${res}_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>`;
+    })
+    .join("\n");
+  manifest = manifest.replace(/(<activity\b[^>]*android:name="\.MainActivity"[\s\S]*?<\/activity>)/, `$1\n\n${aliases}`);
+  fs.writeFileSync(manifestPath, manifest);
+  console.log(`android: иконок приложения — ${icons.length} (activity-alias)`);
+}
+
+// Прокси приложения (AppProxyPlugin) — ProxyController из androidx.webkit: Capacitor тянет
+// его только как implementation, в код приложения он не попадает — подключаем явно.
+function wireAndroidWebkit() {
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  let gradle = fs.readFileSync(gradlePath, "utf8");
+  if (gradle.includes("androidx.webkit:webkit")) return;
+  gradle = gradle.replace(/dependencies\s*\{/, (m) => `${m}\n    implementation "androidx.webkit:webkit:1.12.1"`);
+  fs.writeFileSync(gradlePath, gradle);
+  console.log("android: androidx.webkit для прокси приложения");
+}
+
+// Native push handling extends FirebaseMessagingService directly. The Capacitor
+// plugin keeps Firebase as an implementation dependency, so it is not visible
+// while compiling the app's own service. Also exclude server-only compressed
+// web assets: AAPT normalizes .gz/.br names and otherwise reports duplicates.
+function wireAndroidBuildCompatibility() {
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  let gradle = fs.readFileSync(gradlePath, "utf8");
+  if (!gradle.includes("com.google.firebase:firebase-messaging:24.1.0")) {
+    gradle = gradle.replace(
+      /implementation project\(':capacitor-android'\)/,
+      `$&\n    implementation "com.google.firebase:firebase-messaging:24.1.0"`
+    );
+  }
+  if (!gradle.includes(":!*.gz:!*.br")) {
+    gradle = gradle.replace(
+      /ignoreAssetsPattern '([^']*)'/,
+      (_, pattern) => `ignoreAssetsPattern '${pattern}:!*.gz:!*.br'`
+    );
+  }
+  fs.writeFileSync(gradlePath, gradle);
+  console.log("android: Firebase push dependency and compressed asset exclusions applied");
+}
+
+// Ссылки в приложение (MainActivity.pathFromIntent): nexora://chat/… — как у приложения для
+// компьютера, и ссылки на сайт https://<server.url>/chat/…, /u/…, /join/…, /s/…, /app/… —
+// «Открыть в приложении». Подтверждённые ссылки (без вопроса «Чем открыть») — когда в
+// public/.well-known/assetlinks.json есть отпечаток ключа подписи ru.nexora.app (DEPLOY_MOBILE.md).
+function wireAndroidDeepLinks() {
+  const paths = ["/chat/", "/u/", "/join/", "/s/", "/app/", "/folder/", "/call-join/", "/community/"];
+  const manifestPath = path.join(ROOT, "android/app/src/main/AndroidManifest.xml");
+  let manifest = fs.readFileSync(manifestPath, "utf8");
+  if (manifest.includes('android:scheme="nexora"')) return;
+  const host = new URL(JSON.parse(fs.readFileSync(path.join(ROOT, "capacitor.config.json"), "utf8")).server.url).host;
+  const filters = `
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nexora" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${host}" />
+${paths.map((p) => `                <data android:pathPrefix="${p}" />`).join("\n")}
+            </intent-filter>
+`;
+  const activity = /(<activity\b[^>]*android:name="\.MainActivity"[\s\S]*?)(\s*<\/activity>)/;
+  if (!activity.test(manifest)) {
+    console.log("android: не нашёл MainActivity в манифесте — ссылки nexora:// не подключены");
+    return;
+  }
+  manifest = manifest.replace(activity, `$1\n${filters}$2`);
+  fs.writeFileSync(manifestPath, manifest);
+  console.log(`android: ссылки nexora:// и https://${host}/… открываются в приложении`);
+}
+
+// iOS: альтернативные иконки — наборы AppIcon-<id> в Assets.xcassets (их скопировали
+// выше); Xcode включает их в сборку с ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS.
+// Плагин AppIcon — в AppDelegate.swift (файл уже в проекте), регистрирует его свой
+// контроллер, который ставим в Main.storyboard вместо CAPBridgeViewController.
+function wireIosAppIcons() {
+  const pbxPath = path.join(ROOT, "ios/App/App.xcodeproj/project.pbxproj");
+  if (fs.existsSync(pbxPath)) {
+    let pbx = fs.readFileSync(pbxPath, "utf8");
+    if (!pbx.includes("ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS")) {
+      pbx = pbx.replace(/(\t*)ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;/g, "$1ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n$1ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;");
+      fs.writeFileSync(pbxPath, pbx);
+    }
+  }
+  const boardPath = path.join(ROOT, "ios/App/App/Base.lproj/Main.storyboard");
+  if (fs.existsSync(boardPath)) {
+    const board = fs.readFileSync(boardPath, "utf8");
+    fs.writeFileSync(
+      boardPath,
+      board.replace('customClass="CAPBridgeViewController" customModule="Capacitor"', 'customClass="NexoraBridgeViewController" customModule="App" customModuleProvider="target"')
+    );
+  }
+  const delegatePath = path.join(ROOT, "ios/App/App/AppDelegate.swift");
+  if (fs.existsSync(delegatePath)) {
+    const delegate = fs.readFileSync(delegatePath, "utf8");
+    if (!delegate.includes("AppIconPlugin")) {
+      fs.writeFileSync(delegatePath, `${delegate}\n${fs.readFileSync(path.join(ROOT, "resources/ios-native/AppIcon.swift"), "utf8")}`);
+    }
+  }
+  console.log("ios: альтернативные иконки приложения подключены");
+}
+
+// Push через Firebase: google-services.json (файл resources/android/google-services.json
+// или секрет GOOGLE_SERVICES_JSON в CI) — без него android/app/build.gradle не подключает
+// Firebase, и уведомлений нет. Плюс белая иконка и канал для уведомлений, которые
+// Android показывает сам, пока приложение закрыто.
+var useNexoraMessagingService = false; // var: функцию вызывают выше по файлу, до этой строки
+function wirePushNotifications() {
+  const target = path.join(ROOT, "android/app/google-services.json");
+  const file = path.join(ROOT, "resources/android/google-services.json");
+  if (process.env.GOOGLE_SERVICES_JSON) fs.writeFileSync(target, process.env.GOOGLE_SERVICES_JSON);
+  else if (fs.existsSync(file)) fs.copyFileSync(file, target);
+  if (!fs.existsSync(target)) {
+    // Без Firebase вызов register() роняет приложение («Default FirebaseApp is not
+    // initialized») — выключаем плагин целиком: приложение работает, просто без push.
+    dropAndroidPlugin("@capacitor/push-notifications", "capacitor-push-notifications");
+    console.log("android: нет google-services.json — Firebase выключен, уведомления через фоновую службу (lib/nativeNotify.js)");
+  } else {
+    console.log("android: google-services.json на месте — push-уведомления включены");
+    // Свой обработчик push вместо плагинного: звонок (data-сообщение) показывает экран
+    // входящего звонка, даже когда приложение закрыто (NexoraMessagingService.java).
+    fs.cpSync(path.join(ROOT, "resources/android/java-firebase"), path.join(ROOT, "android/app/src/main/java/ru/nexora/app"), { recursive: true });
+    useNexoraMessagingService = true;
+  }
+
+  const manifestPath = path.join(ROOT, "android/app/src/main/AndroidManifest.xml");
+  let manifest = fs.readFileSync(manifestPath, "utf8");
+  if (useNexoraMessagingService && !manifest.includes("NexoraMessagingService")) {
+    if (!manifest.includes("xmlns:tools=")) manifest = manifest.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ');
+    manifest = manifest.replace(
+      /<application([^>]*)>/,
+      `<application$1>
+        <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
+        <service android:name=".NexoraMessagingService" android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <receiver android:name=".MessageNotificationReceiver" android:exported="false" />`
+    );
+  }
+  if (useNexoraMessagingService && !manifest.includes("MessageNotificationReceiver")) {
+    manifest = manifest.replace(/<application([^>]*)>/, `<application$1>
+        <receiver android:name=".MessageNotificationReceiver" android:exported="false" />`);
+  }
+  // Фоновая служба (lib/nativeNotify.js): держит приложение на связи без Firebase.
+  if (!manifest.includes("AndroidForegroundService")) {
+    manifest = manifest
+      .replace(
+        /<application([^>]*)>/,
+        `<application$1>
+        <receiver android:name="io.capawesome.capacitorjs.plugins.foregroundservice.NotificationActionBroadcastReceiver" />
+        <service android:name="io.capawesome.capacitorjs.plugins.foregroundservice.AndroidForegroundService" android:foregroundServiceType="remoteMessaging" />`
+      );
+  }
+  // Клавиатура должна сжимать окно, а не наезжать на поле ввода (вместе с
+  // Keyboard.resizeOnFullScreen в capacitor.config.json — на Android 15 окно во весь экран).
+  if (!manifest.includes("windowSoftInputMode")) {
+    manifest = manifest.replace(/<activity\b/, '<activity android:windowSoftInputMode="adjustResize"');
+  }
+  // Каждое разрешение — отдельно, чтобы повторный запуск дописал недостающие.
+  // CAMERA/RECORD_AUDIO/MODIFY_AUDIO_SETTINGS: без них в манифесте WebView отказывал
+  // getUserMedia, не спрашивая, — звонки, голосовые и кружки на Android не работали.
+  // USE_FULL_SCREEN_INTENT — экран входящего звонка поверх блокировки (CallNotifier.java).
+  // ContactsPlugin объявляет пару READ/WRITE даже когда Nexora только читает
+  // телефонную книгу. Без WRITE_CONTACTS Capacitor считает alias contacts
+  // неполным и системный запрос разрешения завершается ошибкой.
+  for (const perm of ["FOREGROUND_SERVICE", "FOREGROUND_SERVICE_REMOTE_MESSAGING", "POST_NOTIFICATIONS", "READ_CONTACTS", "WRITE_CONTACTS", "CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS", "USE_FULL_SCREEN_INTENT", "VIBRATE", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]) {
+    const line = `<uses-permission android:name="android.permission.${perm}" />`;
+    if (!manifest.includes(`android.permission.${perm}"`)) manifest = manifest.replace("</manifest>", `    ${line}\n</manifest>`);
+  }
+  // Лента последних фото в шторке скрепки (RecentPhotosPlugin.java): Android 13+ —
+  // READ_MEDIA_IMAGES (14+ — и частичный доступ), старее — READ_EXTERNAL_STORAGE.
+  for (const perm of ["READ_MEDIA_IMAGES", "READ_MEDIA_VISUAL_USER_SELECTED"]) {
+    if (!manifest.includes(`android.permission.${perm}"`)) manifest = manifest.replace("</manifest>", `    <uses-permission android:name="android.permission.${perm}" />\n</manifest>`);
+  }
+  if (!manifest.includes('android.permission.READ_EXTERNAL_STORAGE"')) {
+    manifest = manifest.replace("</manifest>", `    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n</manifest>`);
+  }
+  // ACCESS_*_LOCATION: без них BridgeWebChromeClient молча отклоняет navigator.geolocation.
+  if (!manifest.includes("android.hardware.location.gps\"")) {
+    manifest = manifest.replace("</manifest>", `    <uses-feature android:name="android.hardware.location.gps" android:required="false" />\n</manifest>`);
+  }
+  // Разрешение CAMERA иначе делает камеру обязательной — телефоны без неё не смогут поставить приложение.
+  if (!manifest.includes("android.hardware.camera\"")) {
+    manifest = manifest.replace("</manifest>", `    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>`);
+  }
+  if (!manifest.includes("default_notification_icon")) {
+    manifest = manifest.replace(
+      /<application([^>]*)>/,
+      `<application$1>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_nexora" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/ic_launcher_background" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="messages" />`
+    );
+  }
+  fs.writeFileSync(manifestPath, manifest);
+}
+
+// Сборка (scripts/build.js) кладёт рядом с app.js сжатые копии app.js.gz/.br для
+// сервера. Android при упаковке отбрасывает «.gz», и app.js.gz сталкивается с app.js
+// («Duplicate resources»). Приложению они не нужны — оно грузит сайт с server.url.
+function dropPrecompressed(dir) {
+  if (!fs.existsSync(dir)) return;
+  let removed = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (entry.isFile() && /\.(gz|br)$/.test(entry.name)) {
+      fs.rmSync(path.join(entry.parentPath ?? entry.path, entry.name));
+      removed++;
+    }
+  }
+  console.log(`android: убрано сжатых копий .gz/.br — ${removed}`);
+}
+
+function dropAndroidPlugin(pkg, gradleName) {
+  const pluginsJson = path.join(ROOT, "android/app/src/main/assets/capacitor.plugins.json");
+  if (fs.existsSync(pluginsJson)) {
+    const list = JSON.parse(fs.readFileSync(pluginsJson, "utf8")).filter((p) => p.pkg !== pkg);
+    fs.writeFileSync(pluginsJson, JSON.stringify(list, null, "\t"));
+  }
+  for (const file of ["android/capacitor.settings.gradle", "android/app/capacitor.build.gradle"]) {
+    const full = path.join(ROOT, file);
+    if (!fs.existsSync(full)) continue;
+    const kept = fs.readFileSync(full, "utf8").split("\n").filter((line) => !line.includes(`:${gradleName}'`));
+    fs.writeFileSync(full, kept.join("\n"));
+  }
+}
+
+// iOS: без строк «зачем приложению камера/микрофон/контакты» Apple отклоняет сборку,
+// а без ITSAppUsesNonExemptEncryption каждая загрузка ждёт ручного ответа про шифрование.
+function describeIosPermissions() {
+  const plistPath = path.join(ROOT, "ios/App/App/Info.plist");
+  if (!fs.existsSync(plistPath)) return;
+  let plist = fs.readFileSync(plistPath, "utf8");
+  const entries = {
+    NSCameraUsageDescription: "<string>Камера нужна для видеозвонков, видеосообщений и фото.</string>",
+    NSMicrophoneUsageDescription: "<string>Микрофон нужен для звонков и голосовых сообщений.</string>",
+    NSContactsUsageDescription: "<string>Чтобы найти друзей, которые уже пользуются Nexora.</string>",
+    NSPhotoLibraryUsageDescription: "<string>Чтобы отправлять фото и видео из галереи.</string>",
+    NSPhotoLibraryAddUsageDescription: "<string>Чтобы сохранять фото и видео из чатов.</string>",
+    // Без неё WKWebView молча отказывает navigator.geolocation — «Люди рядом» и геопозиция в чате.
+    NSLocationWhenInUseUsageDescription: "<string>Чтобы показать людей рядом и отправить геопозицию в чат.</string>",
+    ITSAppUsesNonExemptEncryption: "<false/>",
+  };
+  for (const [key, value] of Object.entries(entries)) {
+    if (plist.includes(`<key>${key}</key>`)) continue;
+    const at = plist.lastIndexOf("</dict>");
+    plist = `${plist.slice(0, at)}\t<key>${key}</key>\n\t${value}\n${plist.slice(at)}`;
+  }
+  fs.writeFileSync(plistPath, plist);
+  console.log("ios: описания разрешений в Info.plist");
+}
+
+// Версия приложения — из package.json. Шаблон Capacitor ставит versionCode 1 и
+// versionName "1.0" навсегда, а магазины (RuStore, Google Play) принимают обновление,
+// только если versionCode больше прежнего: 1.0.2 → 10002, 1.2.0 → 10200.
+function setAppVersion() {
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  const version = require(path.join(ROOT, "package.json")).version;
+  const [major = 0, minor = 0, patch = 0] = version.split(".").map((n) => parseInt(n, 10) || 0);
+  const code = major * 10000 + minor * 100 + patch;
+  const gradle = fs
+    .readFileSync(gradlePath, "utf8")
+    .replace(/versionCode \d+/, `versionCode ${code}`)
+    .replace(/versionName "[^"]*"/, `versionName "${version}"`);
+  fs.writeFileSync(gradlePath, gradle);
+  console.log(`android: версия ${version} (versionCode ${code})`);
+}
+
+// Capacitor генерирует applicationId из capacitor.config.json, но старый ID уже
+// занят другой карточкой. Namespace Java оставляем совместимым с нативным кодом,
+// а package name APK задаём отдельно — это именно значение, которое видит RuStore.
+function setAndroidApplicationId() {
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  let gradle = fs.readFileSync(gradlePath, "utf8").replace(/applicationId "[^"]*"/, `applicationId "${ANDROID_APPLICATION_ID}"`);
+  fs.writeFileSync(gradlePath, gradle);
+  const stringsPath = path.join(ROOT, "android/app/src/main/res/values/strings.xml");
+  if (fs.existsSync(stringsPath)) {
+    const strings = fs
+      .readFileSync(stringsPath, "utf8")
+      .replace(/(<string name="package_name">)[^<]*/, `$1${ANDROID_APPLICATION_ID}`)
+      .replace(/(<string name="custom_url_scheme">)[^<]*/, `$1${ANDROID_APPLICATION_ID}`);
+    fs.writeFileSync(stringsPath, strings);
+  }
+  console.log(`android: package name ${ANDROID_APPLICATION_ID}`);
+}
+
+// Постоянный ключ для debug-сборок (resources/android/debug.keystore). Иначе каждая
+// сборка в CI подписывалась новым случайным ключом, и Android не ставил новую версию
+// поверх старой («конфликт пакетов»). Прописываем явно в build.gradle: положить файл
+// в ~/.android недостаточно — на раннере Android-инструменты ищут его в другом месте.
+function pinDebugSigningKey() {
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  let gradle = fs.readFileSync(gradlePath, "utf8");
+  if (gradle.includes("nexoraDebugKey")) return;
+  gradle = gradle.replace(
+    /android \{\n/,
+    `android {
+    // nexoraDebugKey — scripts/apply-native-resources.js
+    signingConfigs {
+        debug {
+            storeFile file("\${rootDir}/../resources/android/debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+`
+  );
+  fs.writeFileSync(gradlePath, gradle);
+  console.log("android: debug-сборки подписываются постоянным ключом");
+}
+
+// Release подписывается только если разработчик явно положил android/keystore.properties.
+// Файл игнорируется git и содержит секреты; без него debug-сборка остаётся доступной, но
+// случайно отдать её в RuStore невозможно — release-сборка завершится понятной ошибкой.
+function wireReleaseSigning() {
+  const propertiesPath = path.join(ROOT, "android/keystore.properties");
+  if (!fs.existsSync(propertiesPath)) {
+    console.log("android: keystore.properties не найден — release-подпись не меняется (создайте файл для публикации)");
+    return;
+  }
+  const gradlePath = path.join(ROOT, "android/app/build.gradle");
+  let gradle = fs.readFileSync(gradlePath, "utf8");
+  if (gradle.includes("nexoraReleaseSigning") || (gradle.includes("signingConfig signingConfigs.release") && gradle.includes("keystorePropertiesFile"))) return;
+  const loader = `
+// nexoraReleaseSigning — scripts/apply-native-resources.js
+def nexoraReleasePropertiesFile = rootProject.file("keystore.properties")
+def nexoraReleaseProperties = new Properties()
+nexoraReleaseProperties.load(new FileInputStream(nexoraReleasePropertiesFile))
+`;
+  gradle = gradle.replace("apply plugin: 'com.android.application'\n", `apply plugin: 'com.android.application'${loader}`);
+  gradle = gradle.replace(
+    /android \{\n/,
+    `android {
+    signingConfigs {
+        release {
+            // nexoraReleaseSigning — значения читаются только из локального ignored-файла
+            storeFile file(nexoraReleaseProperties['storeFile'])
+            storePassword nexoraReleaseProperties['storePassword']
+            keyAlias nexoraReleaseProperties['keyAlias']
+            keyPassword nexoraReleaseProperties['keyPassword']
+        }
+    }
+`
+  );
+  gradle = gradle.replace(/(buildTypes \{\n\s*release \{\n)/, "$1            signingConfig signingConfigs.release\n");
+  fs.writeFileSync(gradlePath, gradle);
+  console.log("android: release-сборки подписываются ключом из android/keystore.properties");
+}

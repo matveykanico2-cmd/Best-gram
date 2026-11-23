@@ -1,84 +1,45 @@
 # Nexora
 
-Nexora — монорепозиторий с TypeScript frontend на React/Vite и реальным NestJS API на PostgreSQL/Drizzle. Legacy SQLite/Worker runtime сохранён для лёгкого локального режима и обратной совместимости.
+Open-source messenger with chats, groups, channels, comments, stories, media, voice messages, video-notes and WebRTC calls. The client is React, the production API is NestJS, and SQLite remains the shared data store during migration.
 
-## Локальный запуск
+## Getting started
 
 ```bash
 npm install
-npm run dev
+npm run dev       # backend (apps/api/dist/main.js under nodemon) on :3000
+npm run dev:web   # client (Vite) on :5173, proxies /api and /ws to :3000
 ```
+Проект работает на nexora.ru. Автор — Матвей Николаенко и команда Nexora.
 
-Frontend: `http://127.0.0.1:5173`
-API: `http://127.0.0.1:3000`
-Swagger: `http://127.0.0.1:3000/api/docs`
+Open http://localhost:5173. Production: `npm run build && npm run build:api && npm run start:nest` (the backend serves the client build `apps/web/dist` on :3000).
 
-Для лёгкого legacy-режима без PostgreSQL:
+## Architecture
 
-```bash
-npm start
-```
+Миграция описана в `AGENTS.md`: новый backend-код добавляется в `apps/api`, а оставшийся `server/` используется только через типизированный bridge до миграции соответствующего модуля. `apps/web` — единственный клиент. `packages/contract-tests` фиксирует HTTP/WS-поведение для Nest target.
 
-Открыть: `http://127.0.0.1:4173`
+- **`apps/api`** — NestJS entry point (`npm run build:api && npm run start:nest`).
+- **`server/`** — compatibility/runtime layer: SQLite schema/data helpers, storage, push, media processing, worker and runtime bridges. Это не второй клиент и не rollback-цель.
+- **`apps/web`** — the client: Vite + React 19 + react-router 8 + TanStack Query, laid out by FSD 2.0 (`app → views → widgets → features → entities → shared`). The shell (navigation bar, chat list, an in-progress call's bubble) stays mounted across navigation.
+- **`public/`** — static files: doc, promo and download pages, icons, images, `sw.js`, gift scenes, the bot mini-app SDK (`/js/nexora-web-app.js`).
+- **`data/app.db`** — SQLite-база (схема принадлежит `server/db.js`, а Nest описывает её через Drizzle). Связи участников чатов и звонков нормализованы в join-таблицы; вложенные поля, которые не ищутся между строками, остаются JSON.
 
-Проверки проекта:
+## Technology map
 
-```bash
-npm run lint
-npm run typecheck
-npm run db:migrate
-```
+- Frontend: React 19, TypeScript, Vite, React Router 8, TanStack Query, TanStack Virtual, CSS Modules и FSD 2.0.
+- Backend: NestJS 12 на Express, TypeScript, Drizzle repositories поверх существующего better-sqlite3-соединения.
+- Realtime: авторизованный WebSocket с reconnect/backoff; звонки используют WebRTC mesh со STUN/TURN.
+- Background delivery: Web Push через Service Worker, FCM для Android и native desktop/mobile bridges.
+- Media: range-friendly uploads, серверные превью, lazy thumbnails и общий media viewer.
+- Tests: Vitest/Testing Library для unit/UI и Playwright/contract tests для HTTP/WS.
 
-Для online-режима:
+## Contributor rules
 
-```bash
-NEXORA_DOMAIN=example.com docker compose --profile online up -d --build
-npm run db:migrate:pg
-npm run dev
-```
+Не добавляйте новые маршруты в `server/`: используйте соответствующий Nest-модуль. Общие схемы API хранятся в `packages/shared`, frontend соблюдает границы FSD. Перед release запускайте проверки web, API и релевантные contract tests.
 
-Compose поднимает Nest API, React frontend, PostgreSQL, Redis и MinIO. Профиль `online` добавляет Caddy с автоматическим HTTPS через `NEXORA_DOMAIN`.
+## Calls
 
-Frontend полностью переведён на `.ts/.tsx` и содержит отдельные страницы ленты, профиля, сообщений, сообществ, звонков, видео, marketplace, настроек и админки.
+WebRTC with a mesh topology (one `RTCPeerConnection` per remote participant), signaled primarily over WebSocket with HTTP polling as a reconnect/catch-up fallback. ICE uses Google's public STUN plus the Open Relay Project's public TURN relay — fine for getting calls working across NATs, but swap in a dedicated TURN server (e.g. self-hosted `coturn`) before relying on this for production traffic.
 
-При первом запуске создаются:
+## Posts/channels
 
-- `data/nexora.sqlite` — постоянная база данных;
-- `data/media/` — локальное файловое хранилище загрузок;
-- WebSocket `ws(s)://host/api/realtime` — обмен сообщениями в реальном времени.
-
-Для VPS:
-
-```bash
-NEXORA_HOST=0.0.0.0 NEXORA_PORT=4173 npm start
-```
-
-Данные не являются demo-данными: пользователь создаёт аккаунт через экран регистрации, после чего может входить, публиковать записи, загружать медиа, общаться и видеть данные после перезапуска.
-
-Проверка:
-
-```bash
-npm test
-```
-
-## Домен и постоянные volumes
-
-Для реального домена укажи в `.env`:
-
-```bash
-NEXORA_DOMAIN=example.com
-NEXORA_ORIGIN=https://example.com
-JWT_SECRET=длинный-случайный-секрет
-```
-
-После этого запусти online-профиль:
-
-```bash
-docker compose --profile online up -d --build
-```
-
-Caddy автоматически запросит HTTPS-сертификат для `NEXORA_DOMAIN` и будет
-проксировать приложение через `80/443`. Volume `nexora-postgres` хранит аккаунты,
-посты и сообщения, `nexora-minio` — фотографии и видео, `nexora-redis` —
-временные realtime-данные, а `nexora-caddy` — сертификаты HTTPS. Эти volume нельзя
-удалять при обновлении контейнеров: они и есть постоянное хранилище приложения.
+A channel is a `Chat` with `type: "channel"`; posts are just `Message`s in it. Publishing a post auto-forwards a copy into the channel's linked discussion group (`Chat.linkedDiscussionChatId`), and comments are ordinary replies to that forwarded copy — the same pattern Telegram uses.

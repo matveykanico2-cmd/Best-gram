@@ -1,0 +1,205 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { chatQueries } from "@/entities/chat";
+import { sessionQueries } from "@/entities/session";
+import { closeUserProfile, openUserProfile } from "@/entities/user";
+
+import { fakeApi } from "@/shared/lib/test";
+import { AskHost, Toaster } from "@/shared/ui";
+
+import { UserProfileHost } from "./user-profile-host";
+
+const ME = { id: "u_me0000000", name: "Аня", username: "anya", blockedUserIds: [] as string[], adminSections: [] as string[] };
+const BORIS = {
+  id: "u_boris0000",
+  name: "Борис",
+  username: "boris",
+  bio: "Играю на виолончели",
+  online: false,
+  isPremium: true,
+  isAdsActive: false,
+  isBusiness: false,
+  isBanned: false,
+  giftsReceived: [],
+  avatarImages: [],
+  adAttachments: [],
+  profileTracks: [],
+  profileTrack: null,
+  statusIcon: null,
+  statusName: null,
+  profileName: "Борис",
+};
+const profile = (patch = {}) => ({ user: BORIS, isContact: false, inContacts: false, contactName: null, contactNote: null, commonGroupsCount: 0, pinnedChannels: [], ...patch });
+
+function renderHost(me = ME) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(sessionQueries.current().queryKey, { user: me } as never);
+  client.setQueryData(chatQueries.list().queryKey, []);
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <>
+            <Outlet />
+            <UserProfileHost />
+          </>
+        ),
+        children: [
+          { path: "/", element: <p>Список чатов</p> },
+          { path: "/chat/:chatId", element: <p>Открытый чат</p> },
+          { path: "/u/:username", element: <p>Профиль по нику</p> },
+        ],
+      },
+    ],
+    { initialEntries: ["/"] }
+  );
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+      <AskHost />
+      <Toaster />
+    </QueryClientProvider>
+  );
+  return { client, router };
+}
+
+afterEach(() => {
+  closeUserProfile();
+  cleanup();
+});
+
+describe("профиль человека", () => {
+  it("сведения, «Написать» открывает личку и закрывает панель", async () => {
+    const { calls } = fakeApi({
+      "GET /api/users/u_boris0000": { body: profile() },
+      "POST /api/chats": { body: { chat: { id: "c_dm", type: "dm" } } },
+      "GET /api/chats": { body: { chats: [] } },
+    });
+    const { router } = renderHost();
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    expect(await within(panel).findByText("Играю на виолончели")).toBeTruthy();
+    expect(within(panel).getByText("@boris")).toBeTruthy();
+    expect(within(panel).getByText("Имя в профиле: Борис")).toBeTruthy();
+    expect(within(panel).getByTitle("Nexora Premium")).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Позвонить" })).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Аудио" })).toBeTruthy();
+    expect(within(panel).queryByRole("button", { name: /Добавить в контакты/ })).toBeNull();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Написать" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/c_dm"));
+    expect(calls.find((c) => c.key === "POST /api/chats")?.body).toMatchObject({ userId: BORIS.id, title: "Борис" });
+    expect(screen.queryByRole("complementary", { name: "Профиль" })).toBeNull();
+  });
+
+  it("кнопки в профиле: @ник открывается внутри приложения, сайт — не уводит со страницы", async () => {
+    fakeApi({
+      "GET /api/users/u_boris0000": {
+        body: profile({ user: { ...BORIS, profileLinks: [{ title: "Мой канал", target: "@kanal" }, { title: "Сайт", target: "https://example.com" }] } }),
+      },
+    });
+    const { router } = renderHost();
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    expect(await within(panel).findByRole("button", { name: "Сайт" })).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "Мой канал" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/u/kanal"));
+    expect(screen.queryByRole("complementary", { name: "Профиль" })).toBeNull();
+  });
+
+  it("открывает выбранную владельцем вкладку профиля", async () => {
+    fakeApi({
+      "GET /api/users/u_boris0000": { body: profile({ user: { ...BORIS, profileDefaultTab: "files" } }) },
+      "GET /api/users/u_boris0000/shared-media": {
+        body: {
+          chatId: "c_dm",
+          media: [],
+          files: [{ messageId: "m_file", createdAt: "2026-01-01T00:00:00.000Z", attachment: { kind: "file", url: "/uploads/doc.pdf", name: "Документ.pdf" } }],
+          links: [],
+          voice: [],
+        },
+      },
+    });
+    renderHost();
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    const files = await within(panel).findByRole("button", { name: "Файлы" });
+    await waitFor(() => expect(files.getAttribute("aria-pressed")).toBe("true"));
+    expect(await within(panel).findByText("Документ.pdf")).toBeTruthy();
+  });
+
+  it("блокировка прячет звонки, разблокировка возвращает; Escape закрывает", async () => {
+    const { calls } = fakeApi({
+      "GET /api/users/u_boris0000": { body: profile() },
+      "POST /api/users/u_boris0000/block": { body: { user: null } },
+    });
+    const { client } = renderHost({ ...ME, blockedUserIds: [BORIS.id] });
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    fireEvent.click(await within(panel).findByRole("button", { name: "Дополнительные действия профиля" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Разблокировать/ }));
+    fireEvent.click(await within(panel).findByRole("button", { name: "Дополнительные действия профиля" }));
+    expect(await screen.findByRole("button", { name: /Заблокировать/ })).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Позвонить" })).toBeTruthy();
+    expect(calls.find((c) => c.key === "POST /api/users/u_boris0000/block")?.body).toEqual({ blocked: false });
+    expect(client.getQueryData(sessionQueries.current().queryKey)?.user?.blockedUserIds).toEqual([]);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Профиль" })).toBeNull());
+  });
+
+  it("секретный чат — после подтверждения открывается новый чат", async () => {
+    const { calls } = fakeApi({
+      "GET /api/users/u_boris0000": { body: profile() },
+      "POST /api/chats/secret": { body: { chat: { id: "c_secret", type: "dm" } } },
+      "GET /api/chats": { body: { chats: [] } },
+    });
+    const { router } = renderHost();
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    fireEvent.click(await within(panel).findByRole("button", { name: "Дополнительные действия профиля" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Начать секретный чат/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Начать" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/chat/c_secret"));
+    expect(calls.find((c) => c.key === "POST /api/chats/secret")?.body).toEqual({ userId: BORIS.id });
+  });
+
+  it("свой профиль: подпись про приватность, QR-код, без действий с контактом", async () => {
+    fakeApi({ "GET /api/users/u_me0000000": { body: profile({ user: { ...BORIS, id: ME.id, name: "Аня", username: "anya", profileName: undefined } }) } });
+    renderHost();
+    act(() => openUserProfile(ME.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    expect(await within(panel).findByText("Так ваш профиль видят те, кому это разрешает приватность")).toBeTruthy();
+    expect(within(panel).queryByRole("button", { name: /Заблокировать/ })).toBeNull();
+    expect(within(panel).getByText("Закрепите свои публичные каналы — их увидит каждый, кто откроет ваш профиль.")).toBeTruthy();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Дополнительные действия профиля" }));
+    fireEvent.click(screen.getByRole("button", { name: "QR-код" }));
+    expect(await screen.findByRole("dialog", { name: "QR-код" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Скопировать ссылку" })).toBeTruthy();
+  });
+
+  it("QR-код есть и в чужом профиле с именем пользователя, без имени — нет", async () => {
+    fakeApi({
+      "GET /api/users/u_boris0000": { body: profile() },
+      "GET /api/users/u_nousername": { body: profile({ user: { ...BORIS, id: "u_nousername", username: null } }) },
+    });
+    renderHost();
+    act(() => openUserProfile(BORIS.id));
+    const panel = await screen.findByRole("complementary", { name: "Профиль" });
+    fireEvent.click(await within(panel).findByRole("button", { name: "Дополнительные действия профиля" }));
+    fireEvent.click(await screen.findByRole("button", { name: "QR-код" }));
+    const dialog = await screen.findByRole("dialog", { name: "QR-код" });
+    expect(within(dialog).getByText("@boris")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Закрыть" }));
+
+    act(() => openUserProfile("u_nousername"));
+    const noUsername = screen.getByRole("complementary", { name: "Профиль" });
+    fireEvent.click(await within(noUsername).findByRole("button", { name: "Дополнительные действия профиля" }));
+    expect(screen.queryByRole("button", { name: "Скопировать ссылку" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "QR-код" })).toBeNull();
+  });
+});

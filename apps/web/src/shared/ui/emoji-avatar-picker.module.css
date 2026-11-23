@@ -1,0 +1,84 @@
+/* Панель выбора смайла или стикера на аватарку. Всегда во всю ширину родителя: внутри
+   колонок с align-items: center она раньше растягивалась по самой длинной строке смайлов
+   и вылезала за края окна, а поле «свой смайл» налезало на кнопку. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface-alt);
+}
+
+.label {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  grid-auto-rows: 52px;
+  gap: 8px;
+  max-height: 208px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: none;
+  color: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  contain: layout paint;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+.emoji:hover,
+.emoji:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.emoji:active {
+  transform: scale(0.92);
+}
+
+.stickerNode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.stickerNode img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+}

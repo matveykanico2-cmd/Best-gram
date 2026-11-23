@@ -1,0 +1,333 @@
+/* Редактор истории — как .story-editor-* и .story-layer-* в public/styles/components.css. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+.editor {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+}
+.topbar {
+  display: flex;
+  width: 100%;
+  max-width: 420px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #fff;
+}
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.tools {
+  display: flex;
+  gap: 6px;
+}
+.tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.skip {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.stage {
+  position: relative;
+  width: min(88vw, 320px);
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #111;
+  touch-action: none;
+}
+/* Текстовая история — белый холст, как drawCover без фото. */
+.blank {
+  background: #ffffff;
+}
+.bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.filters {
+  display: flex;
+  width: min(88vw, 420px);
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
+.filter {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 58px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.filterPreview {
+  display: block;
+  width: 42px;
+  height: 42px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f4a261, #6c63ff 52%, #1d3557);
+}
+.filterActive { color: #fff; font-weight: 700; }
+.filterActive .filterPreview { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.22); }
+.layer {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.selected {
+  outline: 1.5px dashed rgba(255, 255, 255, 0.85);
+  outline-offset: 6px;
+}
+.layerText {
+  padding: 2px 4px;
+  font-weight: 700;
+  white-space: nowrap;
+  outline: none;
+}
+.withBg {
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 6px 14px;
+}
+.layerEmoji {
+  line-height: 1;
+}
+.layerImg {
+  display: block;
+  pointer-events: none;
+}
+.layerDel {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-danger);
+  color: #fff;
+  cursor: pointer;
+}
+.handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--color-accent);
+  cursor: nwse-resize;
+}
+.bgToggle {
+  position: absolute;
+  left: -10px;
+  bottom: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1b2130;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.emojiPanel {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  width: min(88vw, 320px);
+  max-height: 140px;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px;
+}
+.emojiPanel button {
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.colors {
+  display: flex;
+  gap: 8px;
+}
+.colorDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+.done {
+  width: min(88vw, 320px);
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  padding: 12px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.done:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.actionFab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-top: 2px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  color: #101522;
+  box-shadow: 0 5px 22px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.actionPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 6px;
+  width: min(88vw, 320px);
+  border-radius: 16px;
+  background: rgba(24, 29, 42, 0.96);
+  padding: 8px;
+}
+.actionPanel button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.actionPanel button:hover { background: rgba(255, 255, 255, 0.16); }
+.soundChip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: min(88vw, 320px);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.soundChip span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.soundChip audio { width: 120px; height: 28px; }
+.soundChip button { display: inline-flex; border: none; background: none; color: #fff; cursor: pointer; }
+.stickerPanel {
+  width: min(88vw, 320px);
+  max-height: 200px;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px;
+}
+.stickerPackName {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 2px 4px 6px;
+}
+.stickerGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.stickerGrid button {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  padding: 4px;
+  cursor: pointer;
+}
+.stickerGrid button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.stickerGrid img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.stickerEmpty {
+  margin: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  text-align: center;
+}

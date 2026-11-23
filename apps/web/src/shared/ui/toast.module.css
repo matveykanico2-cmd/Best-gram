@@ -1,0 +1,31 @@
+.toast {
+  position: fixed;
+  /* Toasts are global and должны быть видны поверх чата, панели ввода и
+     нижней навигации. Сверху они не перекрываются клавиатурой/композером. */
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 10000;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(20, 22, 28, 0.88);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(14px);
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.25, 1.1) both;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, -8px) scale(0.97); }
+}
+
+.error {
+  border-radius: 24px;
+}

@@ -1,0 +1,513 @@
+/* Как .chat-list-pane и соседи в public/styles/components.css. */
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 2 * var(--panel-y, 10px));
+  margin: var(--panel-y, 10px) var(--panel-x, 10px);
+  border-radius: var(--panel-radius, 16px);
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  padding: 6px 16px 0;
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.connecting {
+  color: var(--color-muted);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.connectionState {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Вкладки папок (.chat-tabs-bar, .chat-tabs-row, .chat-tab — tweb .menu-horizontal-div: текст + полоска снизу). */
+.tabsBar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  flex-shrink: 0;
+  padding: 12px 12px 11px;
+  border: none;
+  border-radius: 12px 12px 0 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--tw-hover);
+}
+
+.tabActive {
+  color: var(--color-accent);
+}
+
+.tabActive::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-accent);
+}
+
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: var(--tw-secondary);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tabActive .tabCount {
+  background: var(--color-accent);
+}
+
+/* «Только непрочитанные» справа от вкладок (.chat-unread-filter). */
+.filterButton {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.filterButton:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.filterButton.filterOn {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+/* Шапка архива (.chat-list-archive-head). */
+.archiveHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* .icon-btn.chat-list-archive-back */
+.archiveBack {
+  display: flex;
+  margin-left: -6px;
+  padding: 6px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.archiveBack:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.archiveTitle {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.archiveCount {
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* Сохраняем видимую строку, когда WS обновляет превью/счётчик во время свайпа. */
+  overflow-anchor: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-top: 4px;
+  padding-bottom: 90px;
+}
+
+.rows {
+  position: relative;
+  width: 100%;
+}
+
+.rowSlot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 0 8px;
+}
+
+.archiveRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.archiveRow:hover {
+  background: var(--color-surface-alt);
+}
+
+.archiveIcon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  color: var(--color-muted);
+}
+
+.archiveBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.archiveName {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.archiveLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.archiveNames {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archiveUnread {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-muted);
+  color: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.emptyText {
+  max-width: 260px;
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.error {
+  padding: 16px;
+  color: var(--color-danger);
+  font-size: 14px;
+  text-align: center;
+}
+
+.error {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.retry {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.skeletonList {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+}
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 7px 10px;
+}
+
+.skeletonAvatar,
+.skeletonCopy span {
+  display: block;
+  background: linear-gradient(100deg, var(--color-surface-alt) 20%, color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-alt)) 45%, var(--color-surface-alt) 70%);
+  background-size: 240% 100%;
+  animation: skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.skeletonAvatar { width: 54px; height: 54px; flex: none; border-radius: 50%; }
+.skeletonCopy { display: grid; flex: 1; gap: 8px; min-width: 0; }
+.skeletonCopy span:first-child { width: 46%; height: 13px; border-radius: 6px; }
+.skeletonCopy span:last-child { width: 72%; height: 11px; border-radius: 6px; }
+.skeletonHint { padding: 16px; color: var(--color-muted); font-size: 13px; text-align: center; }
+
+@keyframes skeleton-shimmer { to { background-position: -140% 0; } }
+
+@media (prefers-reduced-motion: reduce) { .skeletonAvatar, .skeletonCopy span { animation: none; } }
+
+/* Куда встанет перетаскиваемый закреплённый чат (.drop-before, .drop-after). */
+.dropBefore {
+  box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.dropAfter {
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/* Меню ☰, поиск и «Загрузки» (.chat-search-bar, .sidebar-menu-btn). */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 8px 8px;
+}
+
+.updatePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  margin: 2px 12px 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.updatePill:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.loginAlert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 2px 10px 8px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+}
+
+.loginAlertIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.loginAlertDetails {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.loginAlertDetails strong {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loginAlertLink { color: var(--color-accent); }
+
+.loginAlertActions {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.loginAlertActions button {
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-surface-alt);
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.loginAlertActions .loginAlertDanger { color: var(--color-danger); }
+
+.menuButton {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.menuButton:hover {
+  background: var(--tw-hover);
+  color: var(--color-text);
+}

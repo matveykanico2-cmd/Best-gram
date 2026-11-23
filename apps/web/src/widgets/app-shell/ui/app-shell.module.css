@@ -1,0 +1,302 @@
+/* Оболочка: сверху «список | экран», снизу панель навигации на всю ширину (как .shell в public/styles). */
+.shell {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: clamp(300px, 34vw, 410px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "media media" "list main" "nav nav";
+  column-gap: 8px;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  /* Вырез и строка состояния: в приложении для iPhone (Capacitor, страница во весь экран) и в
+     горизонтальной ориентации с viewport-fit=cover. В браузере и на Android отступы нулевые. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
+}
+
+/* Клавиатура открыта: оболочка закреплена на видимой части окна (--vvh и --vvt из
+   visualViewport, useKeyboardViewport). 100dvh на Android оставлял пустую зону, а на iOS Safari
+   видимая область уезжает вниз за курсором — оболочка едет вместе с ней, и поле ввода остаётся
+   прямо над клавиатурой. */
+:global(html.keyboard-open) .shell {
+  position: fixed;
+  top: var(--vvt, 0px);
+  right: 0;
+  left: 0;
+  height: var(--vvh, 100vh);
+  height: var(--vvh, 100dvh);
+  overflow: hidden;
+}
+
+/* Полоска «сейчас играет» во всю ширину над приложением (.shell-media-bar). */
+.media {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  grid-area: media;
+  min-width: 0;
+}
+
+/* Нижняя граница — у самой полоски (.bar), здесь только тень. */
+.media > * {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar {
+  position: relative;
+  isolation: isolate;
+  grid-area: list;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.side {
+  position: absolute;
+  inset: 0;
+  /* Выше кнопки «новое сообщение» списка чатов (z-index 5), который остаётся под панелью. */
+  z-index: 6;
+  overflow: auto;
+  margin: var(--panel-y) 0 var(--panel-y) var(--panel-x);
+  overflow: hidden auto;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  backdrop-filter: none;
+}
+
+.main {
+  position: relative;
+  /* Fixed overlays from the main screen (call/live) must cover the bottom rail too. */
+  z-index: 100;
+  grid-area: main;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  margin: var(--panel-y) var(--panel-x) var(--panel-y) 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  isolation: isolate;
+}
+
+.rail {
+  position: relative;
+  z-index: 0;
+  grid-area: nav;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 4vw, 56px);
+  min-height: 60px;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--panel-border);
+  background: var(--color-surface);
+  box-shadow: 0 -8px 28px rgba(15, 35, 52, 0.06);
+  backdrop-filter: none;
+}
+
+/* На телефоне blur большого слоя пересчитывался при каждом кадре прокрутки списка и ленты.
+   Сплошной фон визуально почти тот же, но не вынуждает Android WebView композить экран заново. */
+@media (pointer: coarse) {
+  .side,
+  .rail {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .rail {
+    background: var(--color-surface);
+  }
+}
+
+.account {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease;
+}
+
+.account:hover {
+  background: var(--color-surface-alt);
+  transform: translateY(-1px);
+}
+
+.railButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 15px;
+  color: var(--color-muted);
+  transition: background-color 0.16s, color 0.16s, transform 0.16s;
+}
+
+.railLabel {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.premiumChatStar {
+  color: #f5b83d;
+}
+
+.railButton:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  transform: translateY(-1px);
+}
+
+.railActive,
+.railActive:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.spacer {
+  display: none;
+}
+
+.updateOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--color-bg) 86%, transparent);
+  pointer-events: auto;
+}
+
+.updateCard {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  width: min(100%, 300px);
+  padding: 24px 22px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  color: var(--color-text);
+  text-align: center;
+}
+
+.updateCard span:last-child {
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.updateSpinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: update-spin 0.8s linear infinite;
+}
+
+@keyframes update-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updateSpinner { animation: none; }
+}
+
+/* Телефон: список с панелью снизу или открытый экран во весь рост. */
+/* На телефонах показываем один экран. Планшеты и средние окна используют
+   компактную двухпанельную раскладку вместо случайного переключения режима. */
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "media" "list" "nav";
+    column-gap: 0;
+  }
+
+  .sidebar {
+    border-right: 0;
+  }
+
+  .side {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .main {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .main {
+    display: none;
+  }
+
+  .rail {
+    justify-content: space-around;
+    gap: 0;
+    min-height: 66px;
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .railButton,
+  .account {
+    display: flex;
+    width: min(64px, 18vw);
+    height: 56px;
+    flex-direction: column;
+    gap: 3px;
+    border-radius: 18px;
+    font-size: 11px;
+    text-decoration: none;
+  }
+
+  .railButton::after {
+    display: none;
+  }
+
+  .railLabel {
+    display: inline-flex;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .railButton svg,
+  .rail > a svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mainOpen {
+    grid-template-areas: "media" "main";
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .mainOpen .sidebar,
+  .mainOpen .rail {
+    display: none;
+  }
+
+  .mainOpen .main {
+    display: block;
+  }
+}

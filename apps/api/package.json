@@ -1,43 +1,30 @@
 {
   "name": "@nexora/api",
-  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/main.js",
-    "test": "node --test test/*.test.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.13",
-    "@nestjs/config": "^4.0.2",
-    "@nestjs/core": "^11.1.13",
-    "@nestjs/platform-express": "^11.1.13",
-    "@nestjs/platform-socket.io": "^11.1.13",
-    "@nestjs/swagger": "^11.2.6",
-    "@nestjs/throttler": "^6.8.0",
-    "@nestjs/websockets": "^11.1.13",
-    "bcryptjs": "^3.0.2",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.2",
-    "cookie-parser": "^1.4.7",
-    "drizzle-orm": "^0.44.7",
-    "jsonwebtoken": "^9.0.3",
-    "pg": "^8.16.3",
+    "@nestjs/common": "^12.2.0",
+    "@nestjs/core": "^12.2.0",
+    "@nestjs/platform-express": "^12.2.0",
+    "drizzle-orm": "^0.45.4",
+    "express-static-gzip": "^3.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "socket.io": "^4.8.3"
+    "send": "^0.19.2",
+    "serve-static": "^1.16.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/multer": "^2.3.0",
-    "@types/node": "^24.10.1",
-    "@types/pg": "^8.15.6",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^26.6.5",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

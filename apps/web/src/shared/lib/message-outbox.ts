@@ -1,0 +1,69 @@
+/**
+ * Устойчивая очередь уже подготовленных сообщений. Файлы к этому моменту загружены, поэтому
+ * в IndexedDB лежат только JSON и ссылки /uploads. Эту же базу читает public/sw.js.
+ */
+export type MessageOutboxEntry = {
+  id: string;
+  chatId: string;
+  path: string;
+  body: Record<string, unknown>;
+  createdAt: number;
+};
+
+const DB_NAME = "nexora-outbox";
+const STORE = "messages";
+
+function database() {
+  if (typeof indexedDB === "undefined") return Promise.resolve<IDBDatabase | null>(null);
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains("media")) db.createObjectStore("media", { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }).catch(() => null);
+}
+
+async function write(mode: IDBTransactionMode, run: (store: IDBObjectStore) => void) {
+  const db = await database();
+  if (!db) return;
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, mode);
+    run(transaction.objectStore(STORE));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  }).catch(() => {});
+  db.close();
+}
+
+export const keepOutgoingMessage = (entry: MessageOutboxEntry) => write("readwrite", (store) => store.put(entry));
+
+export const forgetOutgoingMessage = (id: string) => write("readwrite", (store) => store.delete(id));
+
+/** Восстановить исходящие пузыри после возврата во вкладку/чат. */
+export async function listOutgoingMessages(chatId?: string) {
+  const db = await database();
+  if (!db) return [] as MessageOutboxEntry[];
+  return await new Promise<MessageOutboxEntry[]>((resolve) => {
+    const request = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
+    request.onsuccess = () => resolve((request.result as MessageOutboxEntry[]).filter((entry) => !chatId || entry.chatId === chatId).sort((a, b) => a.createdAt - b.createdAt));
+    request.onerror = () => resolve([]);
+  }).finally(() => db.close());
+}
+
+/** Просим SW отправить очередь сейчас; Background Sync используется, когда он доступен. */
+export async function syncOutgoingMessages() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const withSync = registration as ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } };
+    await withSync.sync?.register("send-messages");
+    registration.active?.postMessage({ type: "sync-messages" });
+  } catch {
+    // Очередь останется в IndexedDB и будет поднята при следующем запуске/online.
+  }
+}

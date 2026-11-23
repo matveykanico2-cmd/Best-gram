@@ -1,0 +1,174 @@
+import { Injectable } from "@nestjs/common";
+import { ApiError } from "../../common/errors/api-error.js";
+import { AVATAR_EMOJI_ERROR, cleanAvatarEmoji } from "../../common/lib/avatar-emoji.js";
+import { isOwnUploadUrl, usesForeignUpload } from "../../legacy/legacy.js";
+import { ContactsRepository } from "../users/contacts.repository.js";
+import { CONTACT_EMOJI_PREFIX, exceptionsFor, normalizePrivacy } from "../users/lib/privacy-rules.js";
+import { contactNote, sealContactNote } from "../users/lib/contact-note.js";
+import { publicUser } from "../users/lib/user.presenter.js";
+import type { User } from "../users/model/domain.js";
+import { UserSettingsService } from "../users/user-settings.service.js";
+import { UserPrivacyService } from "../users/user-privacy.service.js";
+import { UsersRepository } from "../users/users.repository.js";
+import { indexUsersByPhone, phoneKey } from "./lib/phone-match.js";
+import type { AddContactDto, ContactNoteDto, ContactPhotoDto, MatchContactsDto, RemoveContactDto, RenameContactDto } from "./model/schemas/contact.schema.js";
+
+const MAX_PHONES_PER_REQUEST = 1000;
+const CONTACT_VIDEO_PREFIX = "video:";
+
+function uploadUrl(value: string) {
+  return value.startsWith(CONTACT_VIDEO_PREFIX) ? value.slice(CONTACT_VIDEO_PREFIX.length) : value;
+}
+
+/** Строка контакта для ответа: своё фото — только если поставлено (иначе ответ как раньше). */
+function withPhoto<T extends { localAvatar?: string | null; localAvatars?: string | null }>(row: T) {
+  const { localAvatar, localAvatars, ...rest } = row;
+  let avatars: string[] = [];
+  try { avatars = localAvatars ? JSON.parse(localAvatars) : []; } catch { avatars = []; }
+  if (!avatars.length && localAvatar) avatars = [localAvatar];
+  return { ...rest, ...(localAvatar ? { localAvatar } : {}), ...(avatars.length > 1 ? { localAvatars: avatars } : {}) };
+}
+
+// Контакты (/api/contacts) — как server/routes/contacts.js.
+@Injectable()
+export class ContactsService {
+  public constructor(
+    private readonly contacts: ContactsRepository,
+    private readonly users: UsersRepository,
+    private readonly userSettings: UserSettingsService,
+    private readonly privacy: UserPrivacyService
+  ) {}
+
+  public async list(uid: string) {
+    // Себя в списке контактов не показываем: подарок себе, звонок себе и «отправить
+    // контакт» себе невозможны, а импорт контактов может добавить собственный номер.
+    const contacts = this.contacts.findForOwner(uid).filter((c) => c.userId !== uid);
+    const byId = new Map(this.users.findByIds(contacts.map((c) => c.userId)).map((u) => [u.id, u]));
+    const resolved = await Promise.all(
+      contacts.map(async (c) => {
+        const user = byId.get(c.userId);
+        if (!user) return null;
+        const visible = this.privacy.publicUserFor(user, uid);
+        // Заблокировавший вас номер не показывает — как и в профиле.
+        const blockedMe = (user.blockedUserIds ?? []).includes(uid);
+        if (!blockedMe && this.privacy.allowsUser(user.id, "phone", uid)) visible.phone = user.phone;
+        return { ...withPhoto(c), localName: c.localName ?? null, note: contactNote(c), user: visible };
+      })
+    );
+    return { contacts: resolved.filter((c) => c !== null) };
+  }
+
+  public ids(uid: string) {
+    return { ids: this.contacts.findForOwner(uid).map((c) => c.userId) };
+  }
+
+  public add(uid: string, { userId, localName, sharePhone }: AddContactDto) {
+    if (userId === uid) throw new ApiError(400, "Некорректный контакт");
+    const target = this.users.findById(userId);
+    if (!target) throw new ApiError(404, "Пользователь не найден");
+    const contact = this.contacts.add({
+      id: `ct_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      ownerId: uid,
+      userId: target.id,
+      addedAt: new Date().toISOString(),
+      localName,
+    });
+    // «Поделиться моим номером», как в Telegram: этот человек увидит ваш номер,
+    // даже если в приватности он скрыт (исключение «Всегда показывать»).
+    if (sharePhone) this.sharePhoneWith(uid, target.id);
+    // Уже существующий контакт приходит строкой из базы — заметку расшифровываем, как в /rename.
+    return { contact: "note" in contact ? { ...withPhoto(contact), note: contactNote(contact) } : contact };
+  }
+
+  public setNote(uid: string, { userId, note }: ContactNoteDto) {
+    if (!this.contacts.setNote(uid, userId, sealContactNote(uid, userId, note || null))) {
+      throw new ApiError(404, "Сначала добавьте человека в контакты");
+    }
+    return { note: note || null };
+  }
+
+  public rename(uid: string, { userId, localName }: RenameContactDto) {
+    const contact = this.contacts.rename(uid, userId, localName);
+    if (!contact) throw new ApiError(404, "Контакт не найден");
+    return { contact: { ...withPhoto(contact), note: contactNote(contact) } };
+  }
+
+  /**
+   * Своё фото или смайл контакта — видите только вы (как «Установить фото» в Telegram).
+   * Смайл сменяет фото и наоборот; пусто — убрать.
+   */
+  public async setPhoto(uid: string, { userId, url, emoji: rawEmoji, avatars: requested, avatarColor }: ContactPhotoDto) {
+    const emoji = rawEmoji === undefined ? null : cleanAvatarEmoji(rawEmoji);
+    if (emoji === undefined) throw new ApiError(400, AVATAR_EMOJI_ERROR);
+    // Стикер — ссылка на файл: чужой закрытый файл на аватарку не поставить (как у чатов).
+    if (emoji && usesForeignUpload(uid, emoji)) throw new ApiError(400, "Некорректное изображение");
+    // Как у аватарок: только свой загруженный файл (общая проверка из server/lib/uploadAccess.js).
+    if (!emoji && url && !(await isOwnUploadUrl(uid, uploadUrl(url)))) throw new ApiError(400, "Некорректное фото");
+    const value = emoji ? `${CONTACT_EMOJI_PREFIX}${emoji}` : url || null;
+    const avatars = requested?.length ? requested : value ? [value] : [];
+    for (const avatar of avatars) {
+      if (avatar.startsWith(CONTACT_EMOJI_PREFIX)) {
+        const clean = cleanAvatarEmoji(avatar.slice(CONTACT_EMOJI_PREFIX.length));
+        if (!clean || usesForeignUpload(uid, clean)) throw new ApiError(400, AVATAR_EMOJI_ERROR);
+      } else if (!(await isOwnUploadUrl(uid, uploadUrl(avatar)))) throw new ApiError(400, "Некорректное изображение");
+    }
+    const primary = avatars[0] ?? null;
+    if (avatarColor !== undefined && avatarColor !== "transparent" && !/^#[0-9a-f]{6}$/i.test(avatarColor)) throw new ApiError(400, "Некорректный цвет");
+    if (!this.contacts.setPhoto(uid, userId, primary, avatars, avatarColor ?? null)) throw new ApiError(404, "Сначала добавьте человека в контакты");
+    return { localAvatar: primary, ...(avatars.length > 1 ? { localAvatars: avatars } : {}), ...(avatarColor !== undefined ? { localAvatarColor: avatarColor } : {}) };
+  }
+
+  public remove(uid: string, { userId }: RemoveContactDto) {
+    this.contacts.remove(uid, userId);
+    return { ok: true };
+  }
+
+  /** Кто из записной книжки есть в Nexora; скрытые приватностью, блокировкой или баном — в notFound. */
+  public async match(uid: string, { contacts: entries }: MatchContactsDto) {
+    if (entries.length > MAX_PHONES_PER_REQUEST) {
+      throw new ApiError(413, `За один раз можно проверить не больше ${MAX_PHONES_PER_REQUEST} номеров`);
+    }
+
+    const me = this.users.findById(uid);
+    const contactIds = this.contacts.contactIdsOf(uid);
+    const blockedByMe = new Set(me?.blockedUserIds ?? []);
+    const index = indexUsersByPhone(this.users.findAll());
+
+    const candidates: { user: User; name: string; phone: string }[] = [];
+    const notFound: { phone: string; name: string }[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      const key = phoneKey(entry.phone);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const name = typeof entry.name === "string" ? entry.name.slice(0, 120) : "";
+      const user = index.get(key);
+      const phone = String(entry.phone ?? "").slice(0, 40);
+      if (user) candidates.push({ user, name, phone });
+      else notFound.push({ phone, name });
+    }
+
+    const found = [];
+    for (const { user, name, phone } of candidates) {
+      if (user.id === uid) continue;
+      const hidden =
+        user.isBanned ||
+        (user.blockedUserIds ?? []).includes(uid) ||
+        blockedByMe.has(user.id) ||
+        !this.privacy.allowsUser(user.id, "discoverByPhone", uid);
+      if (hidden) notFound.push({ phone, name });
+      else found.push({ user: publicUser(user), alreadyContact: contactIds.has(user.id), localName: name });
+    }
+    return { found, notFound, checked: seen.size };
+  }
+
+  private sharePhoneWith(uid: string, userId: string): void {
+    const privacy = this.userSettings.get(uid).privacy ?? {};
+    const { allow, deny } = exceptionsFor(privacy, "phone");
+    const exceptions = {
+      ...(privacy.exceptions ?? {}),
+      phone: { allow: [...new Set([...allow, userId])], deny: deny.filter((id) => id !== userId) },
+    };
+    this.userSettings.update(uid, { privacy: normalizePrivacy({ ...privacy, exceptions }) });
+  }
+}

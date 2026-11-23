@@ -1,0 +1,72 @@
+import type { call, callListItem, iceServer, signal } from "@nexora/shared/schemas/calls";
+import { queryOptions } from "@tanstack/react-query";
+import type { z } from "zod";
+
+import { http } from "@/shared/api";
+
+export type Call = z.infer<typeof call>;
+export type CallListItem = z.infer<typeof callListItem>;
+export type Signal = z.infer<typeof signal>;
+export type CallKind = "audio" | "video";
+/** Участник звонка — имя и аватар из участников чата или профиля. */
+export type CallPeer = { id: string; name: string; avatarColor?: string | null; avatarImage?: string | null; avatarEmoji?: string | null };
+
+const id = encodeURIComponent;
+type CallBody = { call: Call };
+
+/**
+ * Отправляет завершение звонка во время pagehide/beforeunload. Обычный http-клиент
+ * здесь уже не подходит: браузер может оборвать его вместе с документом.
+ */
+function sendOnPageExit(path: string, method: "POST" | "PATCH", body: unknown) {
+  const payload = JSON.stringify(body);
+  if (method === "POST" && typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const accepted = navigator.sendBeacon(path, new Blob([payload], { type: "application/json" }));
+    if (accepted) return;
+  }
+  void fetch(path, {
+    method,
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: payload,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+const baseKey = ["calls"] as const;
+
+export const callQueries = {
+  baseKey,
+  /** История звонков (GET /api/calls): исходящие, входящие, пропущенные. */
+  history: () =>
+    queryOptions({
+      queryKey: [...baseKey, "history"],
+      queryFn: async ({ signal }) => (await http.get<{ calls: CallListItem[] }>("/api/calls", signal)).calls,
+    }),
+};
+
+export const callApi = {
+  list: () => http.get<{ calls: CallListItem[] }>("/api/calls"),
+  /** ringAll — в группе звонят всем участникам. */
+  place: (chatId: string, kind: CallKind, ringAll: boolean, inviteOnly = false) =>
+    http.post<CallBody>("/api/calls", { chatId, kind, ringAll, ...(inviteOnly ? { inviteOnly: true } : {}) }),
+  answer: (callId: string) => http.post<unknown>(`/api/calls/${id(callId)}/answer`),
+  patch: (callId: string, patch: { status: Call["status"]; durationSec?: number }) => http.patch<CallBody>(`/api/calls/${id(callId)}`, patch),
+  patchOnPageExit: (callId: string, patch: { status: Call["status"]; durationSec?: number }) => sendOnPageExit(`/api/calls/${id(callId)}`, "PATCH", patch),
+  leave: (callId: string, keepAlive = false) => http.post<unknown>(`/api/calls/${id(callId)}/leave`, keepAlive ? { keepAlive: true } : {}),
+  leaveOnPageExit: (callId: string, keepAlive = false) => sendOnPageExit(`/api/calls/${id(callId)}/leave`, "POST", keepAlive ? { keepAlive: true } : {}),
+  addParticipant: (callId: string, userId: string) => http.post<unknown>(`/api/calls/${id(callId)}/participants`, { userId }),
+  removeParticipant: (callId: string, userId: string) => http.delete<unknown>(`/api/calls/${id(callId)}/participants/${id(userId)}`),
+  inviteLink: (callId: string) => http.post<{ url: string }>(`/api/calls/${id(callId)}/invite-link`),
+  joinByLink: (token: string) => http.post<CallBody>(`/api/calls/join/${id(token)}`),
+  /** Голосовой чат группы: идёт ли (call или null), войти, выйти. */
+  room: (chatId: string) => http.get<{ call: Call | null }>(`/api/calls/room/${id(chatId)}`),
+  joinRoom: (chatId: string) => http.post<CallBody>(`/api/calls/room/${id(chatId)}/join`),
+  leaveRoom: (chatId: string) => http.post<unknown>(`/api/calls/room/${id(chatId)}/leave`),
+  leaveRoomOnPageExit: (chatId: string) => sendOnPageExit(`/api/calls/room/${id(chatId)}/leave`, "POST", {}),
+  sendSignal: (callId: string, toUserId: string, kind: string, data: unknown) => http.post<unknown>(`/api/calls/${id(callId)}/signal`, { toUserId, kind, data }),
+  pollSignals: (callId: string, after: number) => http.get<{ signals: Signal[] }>(`/api/calls/${id(callId)}/signal?after=${after}`),
+  iceServers: () => http.get<{ iceServers: z.infer<typeof iceServer>[] }>("/api/calls/ice-servers"),
+  chat: (chatId: string) => http.get<{ chat: { title: string | null; type: string }; members: CallPeer[] }>(`/api/chats/${id(chatId)}`),
+  user: (userId: string) => http.get<{ user: CallPeer }>(`/api/users/${id(userId)}`),
+};

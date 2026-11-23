@@ -1,0 +1,104 @@
+// Метаданные фото (EXIF: геопозиция, модель телефона, время съёмки) не должны уходить
+// собеседникам. JPEG не пережимаем: вырезаем сегменты APP1 (EXIF/XMP) байт в байт, а
+// поворот снимка — единственное, без чего фото встанет боком, — кладём обратно
+// крошечным EXIF только с Orientation. Остальные форматы отдаём как есть.
+
+const SOI = 0xffd8;
+const APP1 = 0xffe1;
+const APP2 = 0xffe2;
+const SOS = 0xffda;
+const MPF = 0x4d504600; // "MPF\0"
+
+/** Orientation (1–8) из сегмента APP1 «Exif», иначе null. */
+function readOrientation(view: DataView, start: number, length: number): number | null {
+  // "Exif\0\0"
+  if (length < 14 || view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0) return null;
+  const tiff = start + 6;
+  const little = view.getUint16(tiff) === 0x4949;
+  const u16 = (at: number) => view.getUint16(at, little);
+  const u32 = (at: number) => view.getUint32(at, little);
+  const ifd = tiff + u32(tiff + 4);
+  if (ifd + 2 > start + length) return null;
+  const entries = u16(ifd);
+  for (let i = 0; i < entries; i++) {
+    const entry = ifd + 2 + i * 12;
+    if (entry + 12 > start + length) return null;
+    if (u16(entry) === 0x0112) {
+      const value = u16(entry + 8);
+      return value >= 1 && value <= 8 ? value : null;
+    }
+  }
+  return null;
+}
+
+/** APP1 с EXIF из одного тега Orientation (big-endian TIFF). */
+function orientationSegment(orientation: number): Uint8Array {
+  const tiff = [0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, orientation, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+  const body = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00, ...tiff];
+  const length = body.length + 2;
+  return new Uint8Array([0xff, 0xe1, length >> 8, length & 0xff, ...body]);
+}
+
+/** JPEG без EXIF/XMP (кроме поворота). Не JPEG или битый файл — null, отдаём оригинал. */
+export function stripJpegMetadata(bytes: Uint8Array): Uint8Array<ArrayBuffer> | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 4 || view.getUint16(0) !== SOI) return null;
+  const parts: Uint8Array[] = [bytes.subarray(0, 2)];
+  let orientation: number | null = null;
+  let stripped = false;
+  let at = 2;
+  while (at + 4 <= bytes.length) {
+    const marker = view.getUint16(at);
+    if ((marker & 0xff00) !== 0xff00) return null;
+    if (marker === SOS) {
+      // Картинка — до первого EOI: в сжатых данных за 0xFF идёт 0x00 или RST, так что
+      // FFD9 — конец основного снимка. Хвост после него (MPF: карта HDR, глубина,
+      // превью) несёт свой EXIF с геопозицией — отбрасываем.
+      // Нет EOI (файл обрезан) — берём до конца, EXIF всё равно вырезан.
+      let end = at + 2;
+      while (end + 1 < bytes.length && !(bytes[end] === 0xff && bytes[end + 1] === 0xd9)) end++;
+      const stop = end + 1 < bytes.length ? end + 2 : bytes.length;
+      if (stop < bytes.length) stripped = true;
+      parts.push(bytes.subarray(at, stop));
+      break;
+    }
+    const length = view.getUint16(at + 2);
+    if (length < 2 || at + 2 + length > bytes.length) return null;
+    if (marker === APP1) {
+      orientation ??= readOrientation(view, at + 4, length - 2);
+      stripped = true;
+    } else if (marker === APP2 && length >= 6 && view.getUint32(at + 4) === MPF) {
+      // Индекс MPF указывает на снимки в хвосте, который мы отбрасываем, — убираем и его.
+      stripped = true;
+    } else {
+      parts.push(bytes.subarray(at, at + 2 + length));
+    }
+    at += 2 + length;
+  }
+  if (!stripped) return null;
+  // JFIF требует APP0 сразу после SOI — поворот кладём за ним.
+  const afterApp0 = parts[1] && parts[1][0] === 0xff && parts[1][1] === 0xe0 ? 2 : 1;
+  if (orientation && orientation !== 1) parts.splice(afterApp0, 0, orientationSegment(orientation));
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let offset = 0;
+  for (const p of parts) {
+    out.set(p, offset);
+    offset += p.length;
+  }
+  return out;
+}
+
+/** Файл для отправки: JPEG — без метаданных, остальное — как есть. */
+export async function withoutPhotoMetadata(file: File): Promise<File> {
+  // JPEG узнаём по первым байтам (FFD8): с «Поделиться» и из части галерей он приходит
+  // без MIME или как image/jpg.
+  if (file.type && !file.type.startsWith("image/")) return file;
+  try {
+    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+    if (head[0] !== 0xff || head[1] !== 0xd8) return file;
+    const clean = stripJpegMetadata(new Uint8Array(await file.arrayBuffer()));
+    return clean ? new File([clean], file.name, { type: file.type, lastModified: file.lastModified }) : file;
+  } catch {
+    return file;
+  }
+}

@@ -1,0 +1,127 @@
+const ALLOWED_KINDS = new Set(["image", "video", "voice", "video-note", "file", "location", "contact", "poll", "checklist", "dice", "game", "sticker"]);
+// Анимированные эмодзи-игры, как в Telegram: число выпадает на сервере,
+// клиент присылает только какой эмодзи бросить. Значение — максимум очков.
+const DICE = { "🎲": 6, "🎯": 6, "🏀": 5, "⚽": 5, "🎳": 6, "🎰": 64 };
+const MAX_CHECKLIST_ITEMS = 30;
+// Большие выбранные альбомы сохраняются одним сообщением. Жёсткий предел
+// оставляем для защиты API от случайных/вредных запросов.
+const MAX_ATTACHMENTS = 100;
+const crypto = require("crypto");
+
+const UPLOAD_URL_RE = /^\/uploads\/[a-z0-9]+_[a-f0-9]{16}(\.[a-z0-9]{1,12})?$/;
+
+function isSafeUrl(url) {
+  if (typeof url !== "string") return false;
+  return UPLOAD_URL_RE.test(url) || url.startsWith("data:") || url.startsWith("https://") || url.startsWith("http://");
+}
+
+function sanitizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return undefined;
+  const cleaned = attachments
+    .slice(0, MAX_ATTACHMENTS)
+    .filter((a) => a && ALLOWED_KINDS.has(a?.kind))
+    .map((a) => {
+      const out = { kind: a.kind };
+      if (a.url !== undefined) {
+        if (!isSafeUrl(a.url)) return null;
+        out.url = a.url;
+      }
+      if (a.thumbUrl !== undefined) {
+        if (!isSafeUrl(a.thumbUrl)) return null;
+        out.thumbUrl = a.thumbUrl;
+      }
+      if (a.name !== undefined) out.name = String(a.name).slice(0, 300);
+      // Спойлер: фото/видео размыто, пока получатель не нажмёт (бесплатно).
+      if ((a.kind === "image" || a.kind === "video") && a.spoiler === true) out.spoiler = true;
+      if (a.mimeType !== undefined) out.mimeType = String(a.mimeType).slice(0, 120);
+      if (a.size !== undefined) out.size = Number.isFinite(a.size) ? a.size : undefined;
+      if (a.kind === "voice" || a.kind === "video-note") {
+        const dur = Number(a.durationSec);
+        if (Number.isFinite(dur) && dur >= 0 && dur < 24 * 3600) out.durationSec = dur;
+      }
+      if (a.kind === "voice") {
+        // Осциллограмма: до 100 уровней 0..31. Расшифровка: текст, распознанный при записи.
+        if (Array.isArray(a.waveform) && a.waveform.length && a.waveform.length <= 100) {
+          const wave = a.waveform.map((v) => Math.round(Number(v)));
+          if (wave.every((v) => Number.isInteger(v) && v >= 0 && v <= 31)) out.waveform = wave;
+        }
+        if (typeof a.transcript === "string" && a.transcript.trim()) out.transcript = a.transcript.trim().slice(0, 4000);
+      }
+      if (a.kind === "sticker") {
+        // Инлайн-стикер в тексте сообщения: маленькая картинка из своего пака.
+        if (typeof a.url !== "string" || !UPLOAD_URL_RE.test(a.url)) return null;
+        out.url = a.url;
+        if (typeof a.emoji === "string") out.emoji = a.emoji.trim().slice(0, 8);
+        if (typeof a.packId === "string") out.packId = a.packId;
+        out.inline = a.inline === true;
+      }
+      if (a.kind === "location") {
+        const lat = Number(a.meta?.lat);
+        const lng = Number(a.meta?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        out.meta = { lat, lng };
+        const liveMinutes = Number(a.meta?.liveMinutes);
+        if (Number.isFinite(liveMinutes) && liveMinutes > 0 && liveMinutes <= 8 * 60) {
+          out.meta.live = true;
+          out.meta.expiresAt = new Date(Date.now() + liveMinutes * 60_000).toISOString();
+        }
+      } else if (a.kind === "contact") {
+        out.meta = {
+          userId: typeof a.meta?.userId === "string" ? a.meta.userId : undefined,
+          name: typeof a.meta?.name === "string" ? a.meta.name.slice(0, 200) : undefined,
+          phone: typeof a.meta?.phone === "string" ? a.meta.phone.slice(0, 40) : undefined,
+        };
+      } else if (a.kind === "poll") {
+        const options = (Array.isArray(a.meta?.options) ? a.meta.options : [])
+          .slice(0, 8)
+          .map((o) => String(o).slice(0, 200));
+        if (options.length < 2) return null;
+        const voterIds = options.map(() => []);
+        const rawCorrect = a.meta?.correctIndex;
+        const correctIndex =
+          typeof rawCorrect === "number" && Number.isInteger(rawCorrect) && rawCorrect >= 0 && rawCorrect < options.length
+            ? rawCorrect
+            : null;
+        const multiple = correctIndex === null && a.meta?.multiple === true;
+        const votersVisible = a.meta?.votersVisible !== false;
+        const closesAtRaw = typeof a.meta?.closesAt === "string" ? Date.parse(a.meta.closesAt) : NaN;
+        const maxClose = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        const closesAt = Number.isFinite(closesAtRaw) && closesAtRaw > Date.now() && closesAtRaw <= maxClose ? new Date(closesAtRaw).toISOString() : null;
+        const questions = Array.isArray(a.meta?.questions) ? a.meta.questions.slice(0, 8).map((q) => ({
+          question: String(q?.question ?? "").slice(0, 500),
+          options: Array.isArray(q?.options) ? q.options.slice(0, 8).map((o) => String(o).slice(0, 200)) : [],
+          voterIds: (Array.isArray(q?.options) ? q.options : []).map(() => []),
+          votes: (Array.isArray(q?.options) ? q.options : []).map(() => 0),
+          correctIndex: Number.isInteger(q?.correctIndex) ? q.correctIndex : null,
+        })).filter((q) => q.question && q.options.length >= 2) : [];
+        out.meta = { options, voterIds, votes: voterIds.map((v) => v.length), correctIndex, multiple, closed: false, votersVisible, closesAt, ...(questions.length > 1 ? { questions } : {}) };
+      } else if (a.kind === "game") {
+        // Карточка игры: только ссылка на игру, код и рекорды — на сервере.
+        const gameId = typeof a.meta?.gameId === "string" && /^(builtin-[a-z0-9-]{1,32}|g_[A-Za-z0-9_-]{4,40})$/.test(a.meta.gameId) ? a.meta.gameId : null;
+        if (!gameId) return null;
+        out.meta = {
+          gameId,
+          title: String(a.meta?.title ?? "Игра").slice(0, 64),
+          emoji: [...String(a.meta?.emoji ?? "🎮")].slice(0, 2).join(""),
+          description: String(a.meta?.description ?? "").slice(0, 200),
+        };
+      } else if (a.kind === "dice") {
+        const emoji = typeof a.meta?.emoji === "string" && DICE[a.meta.emoji] ? a.meta.emoji : "🎲";
+        out.meta = { emoji, value: crypto.randomInt(1, DICE[emoji] + 1) };
+      } else if (a.kind === "checklist") {
+        // Чек-лист, как в Telegram: отметки ставит сервер, от клиента — только тексты.
+        const items = (Array.isArray(a.meta?.items) ? a.meta.items : [])
+          .map((it) => String(typeof it === "string" ? it : it?.text ?? "").trim().slice(0, 200))
+          .filter(Boolean)
+          .slice(0, MAX_CHECKLIST_ITEMS)
+          .map((text, i) => ({ id: i + 1, text }));
+        if (!items.length) return null;
+        out.meta = { items, othersCanAdd: a.meta?.othersCanAdd === true, othersCanMark: a.meta?.othersCanMark !== false };
+      }
+      return out;
+    })
+    .filter(Boolean);
+  return cleaned.length ? cleaned : undefined;
+}
+
+module.exports = { sanitizeAttachments, isSafeUrl, MAX_CHECKLIST_ITEMS, DICE };

@@ -1,60 +1,34 @@
 services:
-  api:
+  nexora:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: Dockerfile
     restart: unless-stopped
+    env_file:
+      - /root/nexora.env
     environment:
+      NODE_ENV: production
       PORT: 3000
-      HOST: 0.0.0.0
-      DATABASE_URL: postgres://nexora:nexora@postgres:5432/nexora
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
-      FRONTEND_URL: ${NEXORA_ORIGIN:?set NEXORA_ORIGIN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  web:
-    build:
-      context: apps/web
-      dockerfile: dockerfile
-    restart: unless-stopped
-    environment:
-      VITE_BACKEND_TARGET: http://api:3000
+      PREMIUM_ADMIN_PHONE: ${PREMIUM_ADMIN_PHONE:?set PREMIUM_ADMIN_PHONE}
+      PREMIUM_ADMIN_PHONES: ${PREMIUM_ADMIN_PHONES:-}
+      NEXORA_ORIGIN: ${NEXORA_ORIGIN:?set NEXORA_ORIGIN}
+    volumes:
+      - nexora-data:/app/data
     ports:
-      - "4000:5173"
+      - "4000:3000"
     networks:
       default: {}
       dokploy-network:
         aliases:
-          - nexora-web
-    depends_on:
-      - api
-
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: nexora
-      POSTGRES_USER: nexora
-      POSTGRES_PASSWORD: nexora
-    volumes:
-      - nexora-postgres:/var/lib/postgresql/data
+          - nexora
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nexora -d nexora"]
-      interval: 5s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 30s
       timeout: 5s
-      retries: 20
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - nexora-redis:/data
+      retries: 5
 
 volumes:
-  nexora-postgres:
-  nexora-redis:
+  nexora-data:
 
 networks:
   dokploy-network:

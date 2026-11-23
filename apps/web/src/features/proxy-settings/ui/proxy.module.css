@@ -1,0 +1,167 @@
+/* «Настройки → Прокси»: форма ссылки, QR-код и действия у сохранённых прокси. */
+.form {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.form > input {
+  min-width: 0;
+  flex: 1;
+}
+
+.error {
+  margin: 0;
+  padding: 0 16px 10px;
+  font-size: 14px;
+  color: var(--color-danger);
+}
+
+.empty {
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.connect {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.connect:disabled {
+  background: none;
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.iconButton {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--color-hover, rgba(0, 0, 0, 0.05));
+}
+
+.qr {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.qr svg {
+  width: 200px;
+  height: 200px;
+  padding: 10px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.link {
+  margin: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: center;
+  word-break: break-all;
+  color: var(--color-muted);
+}
+
+.hint {
+  margin: 4px 0 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-muted);
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.dialogButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* «Прокси приложения» в нативной оболочке: тип, адрес, порт, логин, пароль. */
+.nativeForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.nativeForm > .error {
+  padding: 0 4px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.field > select {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border, currentColor);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.nativeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proxyToggle {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.proxyToggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proxyToggle small {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.proxyToggle input {
+  width: 42px;
+  height: 24px;
+  accent-color: var(--color-accent);
+}

@@ -1,0 +1,76 @@
+// Контакты как в Telegram — public/js/lib/contactSync.js: кто из телефонной книги уже в Nexora,
+// сразу в контакты, без «Добавить» у каждого. Книгу целиком читает только нативное приложение
+// (плагин @capacitor-community/contacts), в браузере её нет.
+import { Contacts as CapacitorContacts } from "@capacitor-community/contacts";
+
+import { addContact, matchContacts, type MatchFound, type PhoneEntry } from "../api/contacts";
+
+const CHUNK = 500;
+
+type PermissionState = { contacts: string };
+type ContactsPlugin = {
+  checkPermissions: () => Promise<PermissionState>;
+  requestPermissions: () => Promise<PermissionState>;
+  getContacts: (opts: { projection: { name: boolean; phones: boolean } }) => Promise<{
+    contacts?: { name?: { display?: string; given?: string; family?: string }; phones?: { number?: string }[] }[];
+  }>;
+};
+type CapacitorWindow = Window & { Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { Contacts?: ContactsPlugin } } };
+
+function contactsPlugin() {
+  const cap = (window as CapacitorWindow).Capacitor;
+  return cap?.isNativePlatform?.() ? (cap.Plugins?.Contacts ?? (CapacitorContacts as unknown as ContactsPlugin)) : null;
+}
+
+export const canReadPhoneBook = () => !!contactsPlugin();
+
+/** Вся телефонная книга; разрешение спрашивает сама система (один раз). */
+export async function readPhoneBook({ prompt = true } = {}): Promise<PhoneEntry[]> {
+  const plugin = contactsPlugin();
+  if (!plugin) return [];
+  let { contacts: state } = await plugin.checkPermissions();
+  if (state !== "granted" && state !== "limited" && prompt) ({ contacts: state } = await plugin.requestPermissions());
+  if (state !== "granted" && state !== "limited") throw new Error("Нет доступа к контактам — разрешите его в настройках Android для Nexora.");
+  const { contacts } = await plugin.getContacts({ projection: { name: true, phones: true } });
+  const out: PhoneEntry[] = [];
+  for (const c of contacts ?? []) {
+    const name = c.name?.display ?? [c.name?.given, c.name?.family].filter(Boolean).join(" ");
+    for (const p of c.phones ?? []) if (p?.number) out.push({ name: name ?? "", phone: String(p.number) });
+  }
+  return out;
+}
+
+export type SyncedFound = MatchFound & { justAdded?: boolean };
+
+/** Сверить номера с сервером (пачками) и добавить в контакты всех найденных, кого ещё нет. */
+export async function matchAndAddAll(entries: PhoneEntry[]) {
+  const found: SyncedFound[] = [];
+  const notFound: PhoneEntry[] = [];
+  let checked = 0;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    const res = await matchContacts(entries.slice(i, i + CHUNK));
+    found.push(...res.found);
+    notFound.push(...res.notFound);
+    checked += res.checked;
+  }
+  let added = 0;
+  // Один человек может быть записан под несколькими номерами. Добавляем его один раз,
+  // а выбранным отмечаем каждое совпадение — иначе после разрешения часть строк всё ещё
+  // показывала кнопку «Добавить», хотя контакт уже появился.
+  const byUser = new Map<string, SyncedFound[]>();
+  for (const entry of found) byUser.set(entry.user.id, [...(byUser.get(entry.user.id) ?? []), entry]);
+  await Promise.all(
+    [...byUser.values()].map(async (entries) => {
+      if (entries.some((entry) => entry.alreadyContact)) return;
+      try {
+        const entry = entries[0]!;
+        await addContact(entry.user.id, entry.localName || null);
+        for (const match of entries) match.justAdded = true;
+        added++;
+      } catch {
+        // Не добавился один — остальные всё равно добавляем.
+      }
+    })
+  );
+  return { found, notFound, checked, added };
+}

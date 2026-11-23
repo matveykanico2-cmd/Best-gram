@@ -1,0 +1,160 @@
+const db = require("../db");
+const { DONATIONALERTS_CLIENT_ID, DONATIONALERTS_CLIENT_SECRET, DONATIONALERTS_REDIRECT_URI } = require("../config");
+const { getPendingOrderByCode, CODE_RE } = require("../data/pendingOrders");
+const { fulfillOrder } = require("./fulfillOrder");
+
+const TOKEN_URL = "https://www.donationalerts.com/oauth/token";
+const AUTHORIZE_URL = "https://www.donationalerts.com/oauth/authorize";
+const API_BASE = "https://www.donationalerts.com/api/v1";
+function isConfigured() {
+  return !!(DONATIONALERTS_CLIENT_ID && DONATIONALERTS_CLIENT_SECRET && DONATIONALERTS_REDIRECT_URI);
+}
+
+function loadAuth() {
+  return db.prepare("SELECT * FROM donation_alerts_auth WHERE id = 1").get();
+}
+
+function saveAuth(patch) {
+  const current = loadAuth() ?? {};
+  const next = { ...current, ...patch };
+  db.prepare(
+    `INSERT INTO donation_alerts_auth (id, accessToken, refreshToken, expiresAt, username, lastDonationId)
+     VALUES (1, @accessToken, @refreshToken, @expiresAt, @username, @lastDonationId)
+     ON CONFLICT(id) DO UPDATE SET accessToken = excluded.accessToken, refreshToken = excluded.refreshToken,
+       expiresAt = excluded.expiresAt, username = excluded.username, lastDonationId = excluded.lastDonationId`
+  ).run({
+    accessToken: next.accessToken ?? null,
+    refreshToken: next.refreshToken ?? null,
+    expiresAt: next.expiresAt ?? null,
+    username: next.username ?? null,
+    lastDonationId: next.lastDonationId ?? 0,
+  });
+}
+
+function isConnected() {
+  const auth = loadAuth();
+  return !!auth?.accessToken;
+}
+
+function getDonationPageUrl() {
+  const auth = loadAuth();
+  return auth?.username ? `https://www.donationalerts.com/r/${auth.username}` : null;
+}
+
+function getAuthorizeUrl() {
+  const params = new URLSearchParams({
+    client_id: DONATIONALERTS_CLIENT_ID,
+    redirect_uri: DONATIONALERTS_REDIRECT_URI,
+    response_type: "code",
+    scope: "oauth-donation-index oauth-user-show",
+  });
+  return `${AUTHORIZE_URL}?${params}`;
+}
+
+async function exchangeCodeForTokens(code) {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: DONATIONALERTS_CLIENT_ID,
+      client_secret: DONATIONALERTS_CLIENT_SECRET,
+      redirect_uri: DONATIONALERTS_REDIRECT_URI,
+      code,
+    }),
+  });
+  if (!res.ok) throw new Error(`DonationAlerts token exchange failed: ${res.status} ${await res.text().catch(() => "")}`);
+  const data = await res.json();
+
+  let username = null;
+  try {
+    const userRes = await fetch(`${API_BASE}/user/oauth`, { headers: { Authorization: `Bearer ${data.access_token}` } });
+    const userData = (await userRes.json())?.data;
+    if (userRes.ok) username = userData?.code ?? userData?.name ?? null;
+  } catch {
+  }
+
+  saveAuth({
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: new Date(Date.now() + (data.expires_in ?? 0) * 1000).toISOString(),
+    username,
+  });
+}
+
+async function refreshAccessToken(auth) {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: DONATIONALERTS_CLIENT_ID,
+      client_secret: DONATIONALERTS_CLIENT_SECRET,
+      refresh_token: auth.refreshToken,
+      scope: "oauth-donation-index oauth-user-show",
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  saveAuth({ accessToken: data.access_token, refreshToken: data.refresh_token ?? auth.refreshToken, expiresAt: new Date(Date.now() + (data.expires_in ?? 0) * 1000).toISOString() });
+  return data.access_token;
+}
+
+async function getValidAccessToken() {
+  const auth = loadAuth();
+  if (!auth?.accessToken) return null;
+  if (auth.expiresAt && new Date(auth.expiresAt).getTime() > Date.now() + 60_000) return auth.accessToken;
+  if (!auth.refreshToken) return null;
+  return refreshAccessToken(auth);
+}
+
+function parseDonation(raw) {
+  const amountRub = raw.currency === "RUB" ? Number(raw.amount ?? 0) : 0;
+  const message = String(raw.message ?? "");
+  const match = raw.currency === "RUB" ? message.match(CODE_RE) : null;
+  return { id: raw.id, amountRub, code: match ? match[0].toUpperCase() : null };
+}
+
+async function pollOnce() {
+  if (!isConfigured()) return;
+  const token = await getValidAccessToken();
+  if (!token) return;
+  const auth = loadAuth();
+
+  const res = await fetch(`${API_BASE}/alerts/donations?page=1`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return;
+  const body = await res.json().catch(() => null);
+  const donations = Array.isArray(body?.data) ? body.data : [];
+
+  const fresh = donations.filter((d) => Number(d.id) > (auth.lastDonationId ?? 0)).sort((a, b) => a.id - b.id);
+  let maxId = auth.lastDonationId ?? 0;
+  for (const raw of fresh) {
+    maxId = Math.max(maxId, Number(raw.id));
+    const { code, amountRub } = parseDonation(raw);
+    if (!code) continue;
+    const order = await getPendingOrderByCode(code);
+    if (!order || order.status !== "pending") continue;
+    if (amountRub < order.amountRub) continue;
+    await fulfillOrder(order).catch((err) => console.error("donation fulfill failed:", err));
+  }
+  if (maxId !== auth.lastDonationId) saveAuth({ lastDonationId: maxId });
+}
+
+const POLL_INTERVAL_MS = 30_000;
+function startDonationAlertsSweep() {
+  if (!isConfigured()) return;
+  setInterval(() => {
+    pollOnce().catch((err) => console.error("DonationAlerts poll failed:", err));
+  }, POLL_INTERVAL_MS);
+}
+
+module.exports = {
+  isConfigured,
+  isConnected,
+  loadAuth,
+  getAuthorizeUrl,
+  getDonationPageUrl,
+  exchangeCodeForTokens,
+  startDonationAlertsSweep,
+  pollOnce,
+};

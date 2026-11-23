@@ -1,0 +1,107 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef } from "react";
+
+import { chatCache } from "@/entities/chat";
+import { historyCache, type Message, messageQueries } from "@/entities/message";
+
+import { syncMediaUploads } from "@/shared/lib/media-outbox";
+import { forgetOutgoingMessage, syncOutgoingMessages } from "@/shared/lib/message-outbox";
+import { ensurePushSubscribed, pushDiagnostics } from "@/shared/lib/push";
+import { toast } from "@/shared/ui";
+
+/**
+ * Service worker /sw.js (кэш на случай без сети) и push-подписка этого устройства, если
+ * уведомления уже разрешены, — как конец boot() в public/js/app.js.
+ *
+ * Пуши не приходят, если устройство отписалось или токен устарел (особенно на iPhone:
+ * веб-push работает только для PWA, добавленного на главный экран, iOS 16.4+).
+ * Поэтому при возврате во вкладку и при появлении сети переподписываемся — так пуши
+ * не «задерживаются до входа в приложение».
+ */
+export function useServiceWorker() {
+  const client = useQueryClient();
+  const diagnosed = useRef(false);
+  const resubscribe = useCallback(() => {
+    void ensurePushSubscribed().catch(() => {});
+    if (!diagnosed.current) {
+      void pushDiagnostics().then(() => {
+        diagnosed.current = true;
+      }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    // При первом запуске и при возврате во вкладку — переподписываемся на пуши.
+    resubscribe();
+    if (!("serviceWorker" in navigator)) return;
+    // Без сети приложение открывается из кэша: просим SW докачать сборку после первого
+    // короткого простоя. На медленной сети это по-прежнему отключено, чтобы не отбирать
+    // канал у чатов и медиа.
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    const slowNetwork = connection?.saveData || /^(slow-2g|2g|3g)$/.test(connection?.effectiveType ?? "");
+    const precache = () => {
+      if (slowNetwork) return;
+      void navigator.serviceWorker.ready.then((reg) => {
+        void reg.update().catch(() => {});
+        reg.active?.postMessage({ type: "precache" });
+      }).catch(() => {});
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const precacheLater = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => ("requestIdleCallback" in window ? requestIdleCallback(precache, { timeout: 2500 }) : precache()), 2000);
+    };
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
+      // Проверяем свежесть worker сразу: новый клиент не должен ждать суток,
+      // пока браузер сам решит обновить регистрацию.
+      void reg.update().catch(() => {});
+      precacheLater();
+    }, () => {});
+    // Поднять очередь прошлого запуска сразу. При pagehide SW продолжит её без открытого чата.
+    void syncOutgoingMessages();
+    void syncMediaUploads();
+    const sync = () => void syncOutgoingMessages();
+    const syncMedia = () => void syncMediaUploads();
+    const onWorkerMessage = (event: MessageEvent<{ type?: string; chatId?: string; clientId?: string; message?: Message }>) => {
+      const { type, chatId, clientId, message } = event.data ?? {};
+      if (!chatId || !clientId) return;
+      if (type === "nexora:outbox-sent" && message) {
+        historyCache.confirmPending(client, chatId, clientId, message);
+        chatCache.noteMessage(client, chatId, message);
+      } else if (type === "nexora:outbox-failed") {
+        historyCache.dropPending(client, chatId, clientId);
+        toast("Не удалось отправить сообщение", { error: true });
+      } else if (type === "nexora:media-sent") {
+        if (message) {
+          historyCache.confirmPending(client, chatId, clientId, message);
+          chatCache.noteMessage(client, chatId, message);
+        }
+        // Media can finish while the chat is closed. Refetch inactive histories too:
+        // invalidateQueries alone waits until the user opens the chat, which left a
+        // stale history snapshot visible for one render after returning to it.
+        void client.refetchQueries({ queryKey: messageQueries.chatHistories(chatId), type: "all" }).catch(() => {});
+        return;
+      } else return;
+      void forgetOutgoingMessage(clientId);
+      void client.invalidateQueries({ queryKey: messageQueries.chatHistories(chatId) });
+    };
+    navigator.serviceWorker.addEventListener("message", onWorkerMessage);
+    window.addEventListener("online", precacheLater);
+    window.addEventListener("online", sync);
+    window.addEventListener("online", syncMedia);
+    window.addEventListener("pagehide", sync);
+    // При возврате во вкладку и при появлении сети — переподписка на пуши.
+    window.addEventListener("visibilitychange", resubscribe);
+    window.addEventListener("online", resubscribe);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("online", precacheLater);
+      window.removeEventListener("online", sync);
+      window.removeEventListener("online", syncMedia);
+      window.removeEventListener("pagehide", sync);
+      navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
+      window.removeEventListener("visibilitychange", resubscribe);
+      window.removeEventListener("online", resubscribe);
+    };
+  }, [client, resubscribe]);
+}

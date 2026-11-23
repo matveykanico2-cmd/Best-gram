@@ -1,0 +1,45 @@
+const db = require("../db");
+const { randomInt } = require("crypto");
+
+const CODE_ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomCode(length = 6) {
+  let out = "";
+  for (let i = 0; i < length; i++) out += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  return out;
+}
+
+function createShortLink(targetUrl, creatorId) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomCode();
+    const exists = db.prepare("SELECT 1 FROM short_links WHERE code = ?").get(code);
+    if (exists) continue;
+    db.prepare("INSERT INTO short_links (code, targetUrl, creatorId, createdAt, clicks) VALUES (?, ?, ?, ?, 0)").run(
+      code,
+      targetUrl,
+      creatorId,
+      new Date().toISOString()
+    );
+    return code;
+  }
+  throw new Error("could not allocate a short code");
+}
+
+function getShortLink(code) {
+  return db.prepare("SELECT * FROM short_links WHERE code = ?").get(code);
+}
+
+function registerClick(code) {
+  db.prepare("UPDATE short_links SET clicks = clicks + 1 WHERE code = ?").run(code);
+}
+
+function countLinks() {
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS total, SUM(CASE WHEN createdAt >= ? THEN 1 ELSE 0 END) AS thisMonth FROM short_links"
+    )
+    .get(new Date(Date.now() - 30 * 864e5).toISOString());
+  return { total: Number(row.total) || 0, thisMonth: Number(row.thisMonth) || 0 };
+}
+
+module.exports = { createShortLink, getShortLink, registerClick, countLinks };

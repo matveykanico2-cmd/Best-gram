@@ -1,0 +1,44 @@
+.more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.more:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+/* Как .icon-btn в шапке чата: на телефоне не меньше 38 × 38. */
+@media (max-width: 640px) {
+  .more {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+.text {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-line;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.checkRow input {
+  accent-color: var(--color-accent);
+}

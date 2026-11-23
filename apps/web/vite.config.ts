@@ -1,29 +1,40 @@
-import { defineConfig, loadEnv } from "vite";
+// Новый клиент (этап 4). Пишется параллельно с public/ и переключается целиком, когда
+// сценарии Playwright зелёные на нём. В разработке API, WebSocket и файлы берутся у
+// бэкенда (npm run dev или apps/api) через прокси — cookie сессии остаются своими.
+import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vitest/config";
 
-// https://vite.dev/config/
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
-  const backendTarget = process.env.VITE_BACKEND_TARGET || env.VITE_BACKEND_TARGET || "http://localhost:3000";
+const backend = process.env.NEXORA_API_URL ?? "http://localhost:3000";
+const proxy = {
+  "/api": { target: backend },
+  "/ws": { target: backend, ws: true },
+  "/uploads": { target: backend },
+  // Анимации стикеров, подарков и эмодзи и их плеер — отдаёт бэкенд (src/shared/lib/anim).
+  "/tgs": { target: backend },
+  "/gift-emoji": { target: backend },
+  "/js/vendor": { target: backend },
+  // Эмодзи картинками (src/shared/ui/emoji-text.tsx).
+  "/img/emoji": { target: backend },
+  // Остальная статика public/: значки и манифест из index.html, service worker, сцены и узоры
+  // подарков, SDK мини-приложений, сборки приложения.
+  "/icons": { target: backend },
+  "/manifest.webmanifest": { target: backend },
+  "/sw.js": { target: backend },
+  "/gift-scenes": { target: backend },
+  "/gift-symbols": { target: backend },
+  "/downloads": { target: backend },
+};
 
-  return {
-    plugins: [react(), tailwindcss()],
-    server: {
-      host: "0.0.0.0",
-      allowedHosts: true,
-      proxy: {
-        "/api": {
-          target: backendTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-        "/socket.io": {
-          target: backendTarget,
-          changeOrigin: true,
-          secure: false,
-        },
-      },
-    },
-  };
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
+  server: { port: 5173, proxy },
+  preview: { port: 5174, proxy },
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.{ts,tsx}"],
+  },
 });

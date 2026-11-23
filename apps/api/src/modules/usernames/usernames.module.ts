@@ -1,0 +1,16 @@
+import { Module } from "@nestjs/common";
+import { UsersModule } from "../users/users.module.js";
+import { UsernameAuctionsRepository } from "./username-auctions.repository.js";
+import { UsernameAuctionsService } from "./username-auctions.service.js";
+import { UsernameListingsRepository } from "./username-listings.repository.js";
+import { UsernameMarketService } from "./username-market.service.js";
+import { UsernameAccountService } from "./username-account.service.js";
+import { UsernameAccountController, UsernameAuctionsController, UsernameMarketController } from "./usernames.controller.js";
+
+// Аукционы ников и продажа своего ника (/api/usernames).
+@Module({
+  imports: [UsersModule],
+  controllers: [UsernameMarketController, UsernameAuctionsController, UsernameAccountController],
+  providers: [UsernameAuctionsService, UsernameAuctionsRepository, UsernameMarketService, UsernameListingsRepository, UsernameAccountService],
+})
+export class UsernamesModule {}

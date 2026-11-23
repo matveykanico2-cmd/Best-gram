@@ -1,0 +1,71 @@
+name: Tests
+
+# Тесты фиксируют поведение при миграции на NestJS + React
+# (см. packages/contract-tests/README.md). Контрактные тесты и тесты совместимости данных — на
+# каждый PR; браузерные сценарии (Playwright) — на PR в main и пуш в main.
+# Сервер — apps/api (NestJS); старый server/index.js удалён.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Новый клиент (apps/web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:web
+      - run: npm run build:web
+
+  contract:
+    name: Контрактные, совместимость, unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:types
+      - run: npm run build:api
+      - run: npm run test:api
+      - run: npm run test:contract
+
+  e2e:
+    name: Сценарии в браузере
+    if: github.event_name == 'push' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build:web
+      - run: npm run build:api
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            packages/contract-tests/e2e/.report/
+            packages/contract-tests/e2e/.results/
+          retention-days: 7

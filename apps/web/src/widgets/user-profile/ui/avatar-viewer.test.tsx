@@ -1,0 +1,129 @@
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { AvatarViewer } from "./avatar-viewer";
+
+afterEach(cleanup);
+
+const callbacks = { canEdit: false, onChange: vi.fn(), onClose: vi.fn() };
+
+describe("AvatarViewer", () => {
+  it("показывает активный смайл с фоном, а старые фотографии оставляет дальше", () => {
+    render(
+      <AvatarViewer
+        {...callbacks}
+        user={{
+          name: "Борис",
+          avatarEmoji: "🔥",
+          avatarColor: "#e53935",
+          avatarImage: "/uploads/old.jpg",
+          avatarImages: [{ kind: "image", url: "/uploads/old.jpg" }],
+        }}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    expect(dialog.textContent).toContain("🔥");
+    expect(within(dialog).queryByRole("img", { name: "Борис" })).toBeNull();
+    expect(dialog.querySelector('[style*="background: rgb(229, 57, 53)"]')).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Следующее" }));
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("/uploads/old.jpg");
+  });
+
+  it("добавляет личную фотографию контакта первой только в локальный просмотр", () => {
+    render(
+      <AvatarViewer
+        {...callbacks}
+        user={{
+          name: "Борис",
+          avatarImage: "/uploads/contact-only.jpg",
+          avatarImages: [{ kind: "image", url: "/uploads/public.jpg" }],
+        }}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("/uploads/contact-only.jpg");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Следующее" }));
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("/uploads/public.jpg");
+  });
+
+  it("открывает инициалы как полноценную аватарку", () => {
+    render(<AvatarViewer {...callbacks} user={{ name: "Борис Иванов", avatarColor: "#1e88e5" }} />);
+    expect(within(screen.getByRole("dialog", { name: "Фото профиля" })).getByText("БИ")).toBeTruthy();
+  });
+
+  it("показывает ошибку загрузки фото и позволяет повторить", () => {
+    render(<AvatarViewer {...callbacks} user={{ name: "Борис", avatarImage: "/uploads/broken.jpg" }} />);
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    const image = within(dialog).getByRole("img", { name: "Борис" });
+    fireEvent.error(image);
+    expect(within(dialog).getByRole("alert").textContent).toContain("Не удалось загрузить медиа");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Повторить" }));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("оставляет превью, если оригинал аватарки временно недоступен", () => {
+    render(
+      <AvatarViewer
+        {...callbacks}
+        user={{ name: "Борис", avatarImages: [{ kind: "image", url: "/uploads/photo.jpg", poster: "data:image/jpeg;base64,preview" }] }}
+      />
+    );
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    const image = within(dialog).getByRole("img", { name: "Борис" });
+    fireEvent.error(image);
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("data:image/jpeg;base64,preview");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("редактор открывает сохранённое фото первым, профиль по умолчанию — смайл", () => {
+    render(<AvatarViewer {...callbacks} canEdit photosFirst user={{ name: "Борис", avatarEmoji: "🔥", avatarImages: [{ kind: "image", url: "/uploads/old.jpg" }] }} />);
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("/uploads/old.jpg");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Предыдущее" }));
+    expect(dialog.textContent).toContain("🔥");
+  });
+
+  it("сохраняет индекс главной фотографии и показывает удаление у каждой фотографии", () => {
+    render(
+      <AvatarViewer
+        {...callbacks}
+        canEdit
+        photosFirst
+        user={{
+          name: "Борис",
+          avatarImage: "/uploads/main.jpg",
+          avatarImages: [
+            { kind: "image", url: "/uploads/main.jpg" },
+            { kind: "image", url: "/uploads/second.jpg" },
+          ],
+        }}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    expect(within(dialog).getAllByRole("button", { name: "Удалить" })).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Следующее" }));
+    expect(within(dialog).getAllByRole("button", { name: "Удалить" })).toHaveLength(1);
+  });
+
+  it("сопоставляет главную фотографию с сохранённым poster", () => {
+    render(
+      <AvatarViewer
+        {...callbacks}
+        canEdit
+        user={{
+          name: "Борис",
+          avatarImage: "data:image/jpeg;base64,poster",
+          avatarImages: [{ kind: "image", url: "/uploads/main.jpg", poster: "data:image/jpeg;base64,poster" }],
+        }}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Фото профиля" });
+    expect(within(dialog).getByRole("button", { name: "Удалить" })).toBeTruthy();
+    expect(within(dialog).getByRole("img", { name: "Борис" }).getAttribute("src")).toBe("/uploads/main.jpg");
+  });
+});

@@ -1,0 +1,136 @@
+/* Превью медиа вместо надписей — .mp-* в public/styles/components.css. */
+.line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who {
+  flex-shrink: 0;
+}
+
+.thumbWrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.thumb {
+  flex-shrink: 0;
+  border-radius: 6px;
+  object-fit: contain;
+  background: color-mix(in srgb, var(--color-muted) 25%, transparent);
+}
+
+.round {
+  border-radius: 50%;
+}
+
+.play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 60%));
+}
+
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+}
+
+.fileWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-muted) 20%, transparent);
+  color: var(--color-muted);
+}
+
+.videoNotePlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, #000000cc 0%, #000000aa 100%);
+  color: #fff;
+}
+
+.videoPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-muted) 28%, transparent);
+  color: #fff;
+}
+
+/* Превью подарка в строке чата должно быть статичным: десятки бесконечных SVG-анимаций
+   в виртуальном списке съедали кадры на Android. */
+.giftArt :global(*) {
+  animation: none !important;
+}
+
+.dur {
+  font-variant-numeric: tabular-nums;
+}
+
+.gift {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sticker {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sticker :global(*) {
+  max-width: 100%;
+  max-height: 100%;
+  animation: none !important;
+}
+
+.giftArt {
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.gameThumb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #6a5af9, #d66efd 60%, #ff8a65);
+  flex-shrink: 0;
+}
+
+.gameEmoji {
+  font-size: 20px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}

@@ -1,0 +1,40 @@
+import { Body, Controller, Get, Patch, Req, UseGuards } from "@nestjs/common";
+import type { Request } from "express";
+import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe.js";
+import { AuthGuard } from "../auth/guards/auth.guard.js";
+import { UiLanguageService } from "../ui-language/ui-language.service.js";
+import { patchSettingsSchema, type PatchSettingsDto } from "./model/schemas/settings.schema.js";
+import { SettingsService } from "./settings.service.js";
+
+// Настройки пользователя (/api/settings).
+@Controller("api/settings")
+@UseGuards(AuthGuard)
+export class SettingsController {
+  public constructor(
+    private readonly settings: SettingsService,
+    private readonly uiLanguage: UiLanguageService
+  ) {}
+
+  @Get()
+  public get(@Req() req: Request) {
+    return this.settings.get(req.uid!);
+  }
+
+  @Get("storage")
+  public storage(@Req() req: Request) {
+    return this.settings.storage(req.uid!);
+  }
+
+  /** Язык интерфейса по стране текущего IP (для первого входа). */
+  @Get("country-language")
+  public async countryLanguage(@Req() req: Request) {
+    // Раньше в карту стран уходило название города (place.city), и язык всегда был русский.
+    const { country, language } = await this.uiLanguage.detect(req);
+    return { country, language };
+  }
+
+  @Patch()
+  public update(@Req() req: Request, @Body(new ZodValidationPipe(patchSettingsSchema)) dto: PatchSettingsDto) {
+    return this.settings.update(req.uid!, dto, req);
+  }
+}

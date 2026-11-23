@@ -1,0 +1,787 @@
+import { type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode, use, useEffect, useRef, useState } from "react";
+
+import { GiftMessage, type MessageGift } from "@/entities/gift/@x/message";
+
+import type { Sticker } from "@/shared/lib/anim";
+import { copyText } from "@/shared/lib/clipboard";
+import { useLongPress } from "@/shared/lib/use-long-press";
+import { Avatar, Icon } from "@/shared/ui";
+
+import { isArticle } from "../lib/article";
+import { isMediaOnly, linkPreviewOf } from "../lib/attachments";
+import { customEmojiOnly, jumboEmojiCount } from "../lib/jumbo";
+import { keyboardOf } from "../lib/keyboard";
+import { hasMediaPreview } from "../lib/media-preview";
+import { playMessageEffect, shouldPlayEffect } from "../lib/message-effect";
+import { isCallLogMessage, isReadByOthers, NAME_COLORS, timeLabel } from "../lib/message-meta";
+import { callLogInfo, messagePreview, stripCustomEmoji } from "../lib/message-preview";
+import { type Reaction, reactionsOf,reactionSticker } from "../lib/reactions";
+import { justReacted } from "../lib/reactions-anim";
+import { MessageLinks } from "../model/message-links";
+import type { FeedMessage, Message, ReplyTarget } from "../model/types";
+
+import { type AttachmentActions, MessageAttachments } from "./attachments/message-attachments";
+import { LinkPreviewCard } from "./attachments/misc-attachments";
+import { CustomEmoji, JumboEmoji, ReactionGlyph, StickerBody } from "./animated";
+import { ArticleCard } from "./article-card";
+import { MessageKeyboard } from "./keyboard";
+import { MediaPreview } from "./media-preview";
+import styles from "./message-bubble.module.css";
+import { MessageText } from "./message-text";
+
+/** Автор сообщения, как его показывает лента (участник чата или сам канал). */
+export type MessageSender = {
+  id: string;
+  name: string;
+  avatarColor?: string | null;
+  avatarImage?: string | null;
+  avatarEmoji?: string | null;
+  nameColor?: string | null;
+  isBot?: boolean;
+  isVerified?: boolean;
+  isPremium?: boolean;
+};
+
+type Props = {
+  message: FeedMessage;
+  mine: boolean;
+  sender?: MessageSender | null;
+  /** Имя над пузырём и аватар у последнего в серии — в группах. */
+  showSender?: boolean;
+  /** Тег участника группы рядом с именем (memberTitles). */
+  senderTag?: string | null;
+  showAvatar?: boolean;
+  groupStart?: boolean;
+  groupEnd?: boolean;
+  isChannel?: boolean;
+  replyTo?: Message | ReplyTarget | null;
+  replyToName?: string | null;
+  /** Для «своих» реакций; без него реакции только показываются. */
+  meId?: string;
+  /** Ответ; quote — выделенная в пузыре часть текста. */
+  onReply?: (m: Message, quote?: string) => void;
+  onJumpTo?: (id: string) => void;
+  /** Меню сообщения: «Ещё», правая кнопка, долгое нажатие пальцем. */
+  onOpenMenu?: (m: Message, at: Point, quote?: string) => void;
+  /** Быстрые действия для сообщения, которое ещё не ушло из-за плохой сети. */
+  onEdit?: (m: Message) => void;
+  onDeletePending?: (m: Message) => void;
+  /** Полоса реакций — двойное нажатие. */
+  onOpenReactions?: (m: Message, at: Point) => void;
+  onReact?: (m: Message, emoji: string) => void;
+  /** Открыть фото или видео этого сообщения в просмотрщике. */
+  onOpenMedia?: (m: Message, url: string) => void;
+  /** Клик на стикер в сообщении — открыть его пак (как в Telegram). */
+  onStickerClick?: (sticker: Sticker) => void;
+  /** Ответ на историю — открыть просмотр историй (как в Telegram). */
+  onOpenStory?: (reply: StoryReply, message: FeedMessage) => void;
+  /** Чат с запретом сохранения: без кнопок «скачать». */
+  protectedContent?: boolean;
+  /** Опросы, чек-листы, платные посты. */
+  attachmentActions?: AttachmentActions;
+  /** Имя участника по id — «кто отметил» в чек-листе. */
+  nameOf?: (userId: string) => string;
+  /** Участник по id — аватарки на реакциях. */
+  userOf?: (userId: string) => MessageSender | null;
+  /** «Кто поставил» — долгое нажатие или правая кнопка на реакции; без него — только нажатие. */
+  onReactionDetails?: (m: Message, emoji: string, at: Point) => void;
+  /** Режим выбора: нажатие отмечает сообщение, а не открывает его. */
+  selecting?: boolean;
+  selected?: boolean;
+  /** Отметить или снять (долгое нажатие мышью начинает выбор); без него не выбирается — подарок. */
+  onToggleSelect?: (m: Message) => void;
+  /** «Кратко»: строка — сводка, null — ещё делается. */
+  summary?: string | null;
+  /** Полоса внизу пузыря — «Комментарии» у поста канала. */
+  footer?: ReactNode;
+  /** Нажатие на запись о звонке — перезвонить тем же видом звонка. */
+  onCallBack?: (kind: "audio" | "video") => void;
+  /** Время своей строкой, а не в хвосте текста — как ответы в ветке (thread-reply-time). */
+  metaApart?: boolean;
+  /** Дополнительный класс строки для специального контейнера сообщения. */
+  className?: string;
+  /** «Установить как фото профиля» под предложенным собеседником фото; без него — только подпись. */
+  onUseSuggestedPhoto?: (m: Message) => void;
+  /** Собеседник заблокировал отправителя: квитанцию доставки/прочтения не показываем. */
+  hideDeliveryStatus?: boolean;
+  /** В узкой панели обсуждения свои ответы идут по центру, а не прилипают к правому краю. */
+  centered?: boolean;
+};
+
+type Point = { x: number; y: number };
+
+/** Маленькие картинки стикеров в строке текстового сообщения (24 px по боку). */
+function InlineStickers({ stickers, onStickerClick }: { stickers: Sticker[]; onStickerClick?: (s: Sticker) => void }) {
+  return (
+    <span className={styles.inlineStickers}>
+      {stickers.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          className={styles.inlineSticker}
+          aria-label={s.emoji || "Стикер"}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onStickerClick?.(s);
+          }}
+        >
+          <img className={styles.inlineStickerImage} src={s.url} alt={s.emoji || "стикер"} loading="lazy" draggable={false} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Кнопки над пузырём и реакции не открывают меню долгим нажатием. */
+const NO_HOLD = "button, a, input, textarea";
+// Двойное нажатие — как в messageBubble.js: два касания за 200 мс в пределах 24 px.
+const DOUBLE_TAP_MS = 200;
+const DOUBLE_TAP_PX = 24;
+// Ответ свайпом влево пальцем — как в Telegram: сдвиг до 72 px, ответ от 48 px.
+const SWIPE_START_PX = 12;
+const SWIPE_REPLY_PX = 48;
+const SWIPE_MAX_PX = 72;
+const QUOTE_MAX = 500;
+
+const hasTextSelection = () => {
+  const sel = window.getSelection?.();
+  return !!sel && !sel.isCollapsed && sel.toString().trim() !== "";
+};
+
+/** Выделенный внутри пузыря текст — ответ его процитирует. */
+function selectedQuote(container: HTMLElement | null) {
+  const sel = window.getSelection?.();
+  if (!container || !sel || sel.isCollapsed) return "";
+  const text = sel.toString().trim();
+  return text && container.contains(sel.anchorNode) && container.contains(sel.focusNode) ? text.slice(0, QUOTE_MAX) : "";
+}
+
+/** Пузырь сообщения в ленте — основа MessageBubble из public/js/components/messageBubble.js. */
+export function MessageBubble(props: Props) {
+  const { message: m, mine, sender, showSender, showAvatar, groupStart = true, groupEnd = true, isChannel = false } = props;
+  const { selecting = false, onToggleSelect } = props;
+  const { onOpenProfile } = use(MessageLinks);
+  // Исходящее сообщение остаётся доступным для действий, пока сеть не ответила:
+  // пользователь может скопировать текст, поправить черновик или убрать зависшую
+  // отправку, не ожидая восстановления соединения.
+  const actionable = !!props.onOpenMenu;
+  const rowRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [pendingMenu, setPendingMenu] = useState(false);
+  // Выделение снимается раньше, чем дойдёт click, — запоминаем его при нажатии.
+  const quote = useRef("");
+  const remember = () => {
+    quote.current = selectedQuote(bubbleRef.current);
+  };
+  const takeQuote = () => {
+    const q = quote.current;
+    quote.current = "";
+    return q || undefined;
+  };
+  const hold = useLongPress(
+    (at, pointerType) => {
+      // Пальцем — меню действий (как в Telegram), мышью — начать выбор; в режиме выбора — отметить.
+      if (selecting || pointerType === "mouse") {
+        onToggleSelect?.(m);
+        return;
+      }
+      remember();
+      props.onOpenMenu?.(m, at, takeQuote());
+    },
+    NO_HOLD,
+    { mouse: !!onToggleSelect }
+  );
+  const lastTap = useRef({ at: 0, x: 0, y: 0 });
+  const swipe = useRef<{ x: number; y: number; active: boolean | null } | null>(null);
+
+  // Эффект играет один раз — у только что пришедшего или отправленного.
+  const effect = typeof m.effect === "string" ? m.effect : null;
+  useEffect(() => {
+    if (!effect || m.pending || !shouldPlayEffect(m.id, m.createdAt)) return;
+    const frame = requestAnimationFrame(() => playMessageEffect(effect, bubbleRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [effect, m.id, m.pending, m.createdAt]);
+
+  if (m.type === "system") return <SystemLine text={m.text ?? ""} />;
+
+  // Как в Telegram: пост канала — от канала, «свои» пузыри справа только вне каналов.
+  const out = mine && !isChannel;
+  const isCall = isCallLogMessage(m);
+  const sticker = m.type === "sticker" ? (m.sticker as Sticker | undefined) : undefined;
+  // Инлайн-стикеры — маленькие картинки в строке текстового сообщения.
+  const inlineStickers = m.attachments?.filter((a) => (a as { kind?: string; inline?: boolean }).kind === "sticker" && (a as { inline?: boolean }).inline === true) as Sticker[];
+  // Подарок — своей карточкой (GiftMessage); без данных о подарке — строкой превью.
+  const gift = m.type === "gift" && m.gift ? (m.gift as MessageGift) : null;
+  const giftLine = m.type === "gift" && !gift ? messagePreview(m) : null;
+  // У опроса и чек-листа текст — их заголовок, его рисует само вложение.
+  const titled = m.attachments?.some((a) => (a as { kind?: string }).kind === "poll" || (a as { kind?: string }).kind === "checklist");
+  // Статья — своей карточкой: обложка (первое фото), заголовок и тело в markdown.
+  const article = isArticle(m);
+  const text = !isCall && !sticker && !gift && !titled && !article && m.text?.trim() ? m.text : null;
+  const mediaOnly = !isCall && !article && isMediaOnly(m);
+  const preview = article ? null : linkPreviewOf(m);
+  const summary = props.summary;
+  // Под текстом ещё что-то (карточка ссылки, сводка) — время уходит в свою строку.
+  const below = !!preview || summary !== undefined || !!props.metaApart;
+
+  const meta = (
+    <span className={styles.meta}>
+      {m.visibleToId ? <span title="Это сообщение бота видите только вы">👁 только вам</span> : null}
+      {effect ? (
+        <button
+          type="button"
+          className={styles.effectBadge}
+          title="Повторить эффект"
+          onClick={(e) => {
+            e.stopPropagation();
+            playMessageEffect(effect, bubbleRef.current);
+          }}
+        >
+          {effect}
+        </button>
+      ) : null}
+      {m.editedAt ? <span>изменено</span> : null}
+      {isChannel && typeof m.views === "number" ? (
+        <span className={styles.views} title={`${m.views} просмотров`}>
+          <Icon name="Eye" size={13} /> {m.views}
+        </span>
+      ) : null}
+      <span className={styles.time}>{timeLabel(m.createdAt)}</span>
+      {mine && !gift && !props.hideDeliveryStatus ? (
+        <span className={`${m.pending ? styles.pending : styles.tick} ${styles.delivery}`} role="img" aria-label={m.pending ? "Отправляется" : isReadByOthers(m) ? "Прочитано" : "Доставлено"}>
+          <Icon name={m.pending ? "Clock" : isReadByOthers(m) ? "CheckCheck" : "Check"} size={14} />
+        </span>
+      ) : null}
+    </span>
+  );
+
+  const nameColor = sender?.nameColor ? NAME_COLORS[sender.nameColor] : undefined;
+  const nameStyle = nameColor ? ({ "--name-light": nameColor.light, "--name-dark": nameColor.dark } as CSSProperties) : undefined;
+
+  const body: ReactNode[] = [];
+  if (showSender && (!mine || isChannel) && sender) {
+    body.push(
+      <button
+        key="sender"
+        type="button"
+        className={styles.sender}
+        style={nameStyle}
+        disabled={!onOpenProfile || m.anonymous}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenProfile?.(sender.id);
+        }}
+      >
+        <span className={styles.senderName}>{sender.name}</span>
+        {sender.isVerified ? <Icon name="Verified" size={12} /> : null}
+        {sender.isPremium ? (
+          <span className={styles.senderPremium} title="Nexora Premium">
+            <Icon name="Star" size={12} />
+          </span>
+        ) : null}
+        {props.senderTag ? <span className={styles.senderTag}>{props.senderTag}</span> : null}
+      </button>
+    );
+  }
+  const forwarded = m.forwardedFrom as { senderName?: string; senderId?: string; linkAllowed?: boolean } | undefined;
+  if (forwarded?.senderName) {
+    const fromId = forwarded.linkAllowed ? forwarded.senderId : undefined;
+    body.push(
+      <p key="fwd" className={styles.forwarded}>
+        <Icon name="Forward" size={12} /> Переслано от{" "}
+        {fromId && onOpenProfile ? (
+          <button
+            type="button"
+            className={styles.forwardedName}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenProfile(fromId);
+            }}
+          >
+            {forwarded.senderName}
+          </button>
+        ) : (
+          forwarded.senderName
+        )}
+      </p>
+    );
+  }
+  if (m.replyToId) body.push(<ReplyQuote key="reply" target={props.replyTo} name={props.replyToName} onJumpTo={props.onJumpTo} />);
+  if (m.storyReply) {
+    const open = props.onOpenStory;
+    body.push(<StoryReplyBanner key="story" reply={m.storyReply as StoryReply} onOpenStory={open ? (r) => open(r, m) : undefined} />);
+  }
+  if (giftLine) body.push(<p key="gift" className={styles.attachment}>{giftLine}</p>);
+  if (gift) body.push(<GiftMessage key="gift" messageId={m.id} gift={gift} mine={mine} meta={meta} />);
+  if (m.attachments?.length && !isCall && !article) {
+    body.push(
+      <MessageAttachments
+        key="att"
+        message={m}
+        meId={props.meId ?? ""}
+        nameOf={props.nameOf ?? (() => "участник")}
+            userOf={props.userOf}
+        actions={props.attachmentActions}
+        canDownload={!props.protectedContent}
+        senderName={sender?.name ?? null}
+        onOpenMedia={props.onOpenMedia ? (url) => props.onOpenMedia?.(m, url) : undefined}
+        onDoubleTap={!m.pending && props.onOpenReactions ? (at) => props.onOpenReactions?.(m, at) : undefined}
+      />
+    );
+  }
+
+  if (m.photoSuggestion && !isChannel) {
+    const use = props.onUseSuggestedPhoto;
+    body.push(
+      mine || !use ? (
+        <p key="suggest" className={styles.photoSuggestionNote}>
+          {mine ? "Вы предложили фото профиля" : "Предлагает фото для вашего профиля"}
+        </p>
+      ) : (
+        <button
+          key="suggest"
+          type="button"
+          className={styles.photoSuggestionButton}
+          disabled={m.pending}
+          onClick={(e) => {
+            e.stopPropagation();
+            use(m);
+          }}
+        >
+          Установить как фото профиля
+        </button>
+      )
+    );
+  }
+
+  if (isCall) body.push(<CallBody key="call" message={m} mine={mine} onCallBack={props.onCallBack} />);
+  else if (article) {
+    body.push(
+      <ArticleCard
+        key="article"
+        message={m}
+        meta={reactionsOf(m).length ? null : meta}
+        onOpenCover={props.onOpenMedia ? (url) => props.onOpenMedia?.(m, url) : undefined}
+      />
+    );
+  }
+  else if (sticker) {
+    body.push(<StickerBody key="sticker" messageId={m.id} sticker={sticker} onStickerClick={props.onStickerClick} />);
+  }
+  const reactions = reactionsOf(m);
+  // 1–3 эмодзи или только свои эмодзи — крупно, как в Telegram.
+  const plain = !m.attachments?.length;
+  const ceOnly = text && plain && Array.isArray(m.customEmoji) ? customEmojiOnly(text) : null;
+  const jumbo = text && plain && !ceOnly ? jumboEmojiCount(text) : 0;
+  if (text && ceOnly && ceOnly.length <= 3) {
+    const scenes = m.customEmoji as unknown[];
+    body.push(
+      <span key="text" className={styles.customJumbo}>
+        {ceOnly.map((idx, i) => (scenes[idx] ? <CustomEmoji key={i} scene={scenes[idx]} jumbo /> : <span key={i}>🎨</span>))}
+      </span>
+    );
+  } else if (text && jumbo) body.push(<JumboEmoji key="text" messageId={m.id} text={text} count={jumbo} />);
+  else if (text) {
+    body.push(
+      <MessageText
+        key="text"
+        text={text}
+        customEmoji={Array.isArray(m.customEmoji) ? m.customEmoji : undefined}
+        meta={reactions.length || below || isChannel ? null : meta}
+        className={m.attachments?.length ? styles.mediaCaption : undefined}
+      />
+    );
+    if (inlineStickers?.length) body.push(<InlineStickers key="inline-stickers" stickers={inlineStickers} onStickerClick={props.onStickerClick} />);
+  }
+  // Нет текста, но есть инлайн-стикеры — только картинки в строке.
+  else if (!text && inlineStickers?.length) {
+    body.push(<InlineStickers key="inline-stickers" stickers={inlineStickers} onStickerClick={props.onStickerClick} />);
+  }
+  if (preview) body.push(<LinkPreviewCard key="preview" preview={preview} />);
+  if (summary !== undefined) {
+    body.push(
+      <div key="summary" className={styles.summary}>
+        <span className={styles.summaryLabel}>Кратко</span>
+        <p className={styles.summaryText}>{summary ?? "Делаем сводку…"}</p>
+      </div>
+    );
+  }
+  if (reactions.length) {
+    body.push(
+      <div key="reactions" className={styles.reactions}>
+        {reactions.map((r) => (
+          <ReactionPill
+            key={r.emoji}
+            reaction={r}
+            own={!!props.meId && r.userIds.includes(props.meId)}
+            play={justReacted(m.id, r.emoji)}
+            disabled={!props.onReact || !!m.pending}
+            userOf={props.userOf}
+            showAvatars={!isChannel}
+            onReact={() => props.onReact?.(m, r.emoji)}
+            onDetails={props.onReactionDetails && !m.pending ? (at) => props.onReactionDetails?.(m, r.emoji, at) : undefined}
+          />
+        ))}
+        {!isCall ? meta : null}
+      </div>
+    );
+  } else if (mediaOnly) {
+    // Фото/видео без подписи: время лежит поверх медиа (как в tweb); у кружка внизу свой
+    // таймер — время сообщения под ним.
+    const note = (m.attachments?.[0] as { kind?: string } | undefined)?.kind === "video-note";
+    body.push(
+      <span key="meta" className={note ? styles.metaBelow : styles.metaOverlay}>
+        {meta}
+      </span>
+    );
+  } else if ((!text || below || jumbo || isChannel || (ceOnly && ceOnly.length <= 3)) && !isCall && !gift && !article) body.push(<span key="meta" className={styles.metaRow}>{meta}</span>);
+
+  if (props.footer) body.push(<div key="footer">{props.footer}</div>);
+
+  const bubbleClass = [styles.bubble, out ? styles.out : styles.in, groupStart ? "" : styles.joinTop, groupEnd ? "" : styles.joinBottom, sticker ? styles.stickerBubble : "", gift ? styles.giftBubble : "", mediaOnly ? styles.mediaOnly : "", article ? styles.articleBubble : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  const onContextMenu = (e: MouseEvent) => {
+    if (!actionable || hold.swallow(e)) return;
+    e.preventDefault();
+    if (selecting) {
+      onToggleSelect?.(m);
+      return;
+    }
+    remember();
+    props.onOpenMenu?.(m, { x: e.clientX, y: e.clientY }, takeQuote());
+  };
+  const onClickCapture = (e: MouseEvent) => {
+    if (hold.swallow(e) || !selecting || !onToggleSelect || m.pending) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleSelect(m);
+  };
+
+  const resetSwipe = () => {
+    swipe.current = null;
+    const row = rowRef.current;
+    if (!row) return;
+    row.style.transform = "";
+    row.classList.remove(styles.swipeReady!);
+  };
+  const onPointerDown = (e: PointerEvent) => {
+    if (actionable) hold.onPointerDown(e);
+    // Как в tweb: свайп-ответ только пальцем — мышью тянут, чтобы выделить текст.
+    swipe.current = e.pointerType !== "mouse" && props.onReply && !selecting && !m.pending ? { x: e.clientX, y: e.clientY, active: null } : null;
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (actionable) hold.onPointerMove(e);
+    const s = swipe.current;
+    if (!s || s.active === false) return;
+    const dx = e.clientX - s.x;
+    const dy = Math.abs(e.clientY - s.y);
+    if (s.active === null) {
+      if (Math.abs(dx) < SWIPE_START_PX && dy < SWIPE_START_PX) return;
+      // Идёт выделение текста (ручки выделения на телефоне) — сообщение не двигаем.
+      s.active = !hasTextSelection() && Math.abs(dx) > dy && dx < 0;
+      if (!s.active) return;
+    } else if (hasTextSelection()) {
+      resetSwipe();
+      return;
+    }
+    const shift = Math.min(SWIPE_MAX_PX, Math.max(0, -dx));
+    const row = rowRef.current;
+    if (!row) return;
+    row.style.transform = `translateX(${-shift}px)`;
+    row.classList.toggle(styles.swipeReady!, shift >= SWIPE_REPLY_PX);
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    hold.onPointerUp();
+    const s = swipe.current;
+    resetSwipe();
+    if (s?.active) {
+      if (s.x - e.clientX >= SWIPE_REPLY_PX) props.onReply?.(m);
+      return;
+    }
+    if (m.pending || selecting || !props.onOpenReactions || e.button !== 0 || (e.target as Element).closest?.(NO_HOLD)) {
+      lastTap.current.at = 0;
+      return;
+    }
+    const prev = lastTap.current;
+    const now = Date.now();
+    if (now - prev.at < DOUBLE_TAP_MS && Math.abs(e.clientX - prev.x) < DOUBLE_TAP_PX && Math.abs(e.clientY - prev.y) < DOUBLE_TAP_PX) {
+      lastTap.current = { at: 0, x: 0, y: 0 };
+      // Двойной клик мышью выделяет слово — снимаем выделение.
+      if (e.pointerType === "mouse") window.getSelection?.()?.removeAllRanges();
+      props.onOpenReactions(m, { x: e.clientX, y: e.clientY });
+    } else {
+      lastTap.current = { at: now, x: e.clientX, y: e.clientY };
+    }
+  };
+
+  const selectable = selecting && !!onToggleSelect;
+  const rowClass = [styles.row, out ? styles.rowOut : "", props.centered ? styles.rowCentered : "", props.className ?? "", selectable ? styles.selecting : "", selectable && props.selected ? styles.selectedRow : ""].filter(Boolean).join(" ");
+
+  return (
+    <div
+      ref={rowRef}
+      className={rowClass}
+      data-message-id={m.id}
+      onContextMenu={onContextMenu}
+      onClickCapture={onClickCapture}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        hold.onPointerCancel();
+        resetSwipe();
+      }}
+      onPointerLeave={hold.onPointerLeave}
+    >
+      {selectable ? (
+        <button
+          type="button"
+          className={props.selected ? `${styles.selectMark} ${styles.selectMarkOn}` : styles.selectMark}
+          aria-pressed={!!props.selected}
+          aria-label={props.selected ? "Убрать из выбранных" : "Выбрать"}
+        >
+          {props.selected ? <Icon name="Check" size={13} /> : null}
+        </button>
+      ) : null}
+      {showAvatar !== undefined ? (
+        <span className={styles.avatarSlot}>
+          {showAvatar && sender ? (
+            onOpenProfile && !m.anonymous ? (
+              <button type="button" className={styles.avatarButton} title={`Профиль: ${sender.name}`} onClick={() => onOpenProfile(sender.id)}>
+                <Avatar size={34} name={sender.name} color={sender.avatarColor} image={sender.avatarImage} emoji={sender.avatarEmoji} />
+              </button>
+            ) : (
+              <Avatar size={34} name={sender.name} color={sender.avatarColor} image={sender.avatarImage} emoji={sender.avatarEmoji} />
+            )
+          ) : null}
+        </span>
+      ) : null}
+      {keyboardOf(m.keyboard).length ? (
+        <div className={styles.column}>
+          <div ref={bubbleRef} className={bubbleClass}>
+            {body}
+          </div>
+          <MessageKeyboard message={m} />
+        </div>
+      ) : (
+        <div ref={bubbleRef} className={bubbleClass}>
+          {body}
+        </div>
+      )}
+      {!selecting && (props.onReply || props.onOpenMenu) ? (
+        <span className={styles.actions}>
+          {props.onReply ? (
+            <button type="button" className={styles.actionButton} title="Ответить" onPointerDown={remember} onClick={() => props.onReply?.(m, takeQuote())}>
+              <Icon name="Reply" size={16} />
+            </button>
+          ) : null}
+          {props.onOpenMenu ? (
+            <button
+              type="button"
+              className={styles.actionButton}
+              title="Ещё"
+              onPointerDown={remember}
+              onClick={(e) => props.onOpenMenu?.(m, { x: e.clientX, y: e.clientY }, takeQuote())}
+            >
+              <Icon name="More" size={16} />
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+      {m.pending && mine && !selecting ? (
+        <span className={styles.pendingActions} aria-label="Действия с отправляемым сообщением">
+          <button type="button" className={styles.pendingMore} aria-label="Действия с отправляемым сообщением" aria-expanded={pendingMenu} onClick={(e) => { e.stopPropagation(); setPendingMenu((open) => !open); }}>
+            <Icon name="More" size={16} />
+          </button>
+          {pendingMenu ? (
+            <span className={styles.pendingMenu} role="menu">
+              {m.text?.trim() ? (
+                <button type="button" role="menuitem" className={styles.pendingAction} onClick={() => { setPendingMenu(false); void copyText(m.text ?? "", "Текст скопирован"); }}>
+                  Копировать
+                </button>
+              ) : null}
+              {props.onEdit ? (
+                <button type="button" role="menuitem" className={styles.pendingAction} onClick={() => { setPendingMenu(false); props.onEdit?.(m); }}>
+                  Изменить
+                </button>
+              ) : null}
+              {props.onDeletePending ? (
+                <button type="button" role="menuitem" className={`${styles.pendingAction} ${styles.pendingDanger}`} onClick={() => { setPendingMenu(false); props.onDeletePending?.(m); }}>
+                  Удалить
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function SystemLine({ text }: { text: string }) {
+  const clean = stripCustomEmoji(text).replace(/^\s*🔒\s*/u, "");
+  // Начало секретного чата — карточка по центру.
+  const secret = clean.match(/^(.+?) начал\(а\) секретный чат/);
+  if (secret) {
+    return (
+      <div className={styles.system}>
+        <div className={styles.secretCard}>
+          <p className={styles.secretTitle}>{secret[1]} начал(а) секретный чат</p>
+          <p>Секретные чаты:</p>
+          <ul>
+            <li>Шифруются ключом этого чата</li>
+            <li>Доступны только на этом устройстве</li>
+            <li>Сообщения нельзя переслать</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.system}>
+      <span className={styles.systemText}>{clean}</span>
+    </div>
+  );
+}
+
+function ReplyQuote({ target, name, onJumpTo }: { target?: Message | ReplyTarget | null; name?: string | null; onJumpTo?: (id: string) => void }) {
+  if (!target || "deleted" in target) return <div className={`${styles.reply} ${styles.replyDeleted}`}>Удалённое сообщение</div>;
+  return (
+    <button type="button" className={styles.reply} onClick={() => onJumpTo?.(target.id)}>
+      {name ? <span className={styles.replyName}>{name}</span> : null}
+      {hasMediaPreview(target) ? (
+        <MediaPreview className={styles.replyMedia} message={target} size={28} />
+      ) : (
+        <span className={styles.replyText}>{stripCustomEmoji(messagePreview(target as Message)) || "Сообщение"}</span>
+      )}
+    </button>
+  );
+}
+
+function CallBody({ message, mine, onCallBack }: { message: Message; mine: boolean; onCallBack?: (kind: "audio" | "video") => void }) {
+  const { video, answered, durationSec, title } = callLogInfo(message, mine);
+  const min = Math.floor(durationSec / 60);
+  const sec = durationSec % 60;
+  const duration = answered ? (min ? `${min} мин${sec ? ` ${sec} с` : ""}` : `${sec} с`) : "";
+  return (
+    // Как CallBubble в messageBubble.js: весь пузырь — кнопка «Перезвонить».
+    <div
+      className={answered ? styles.call : `${styles.call} ${styles.callMissed}`}
+      role={onCallBack ? "button" : undefined}
+      tabIndex={onCallBack ? 0 : undefined}
+      title={onCallBack ? "Перезвонить" : undefined}
+      onClick={() => onCallBack?.(video ? "video" : "audio")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onCallBack?.(video ? "video" : "audio");
+      }}
+    >
+      <span className={styles.callTitle}>{title}</span>
+      <span className={styles.callStatus}>
+        <span className={`${styles.callArrow} ${mine ? styles.callOut : ""}`}>➜</span>
+        {timeLabel(message.createdAt)}
+        {duration ? `, ${duration}` : ""}
+      </span>
+      <span className={styles.callIcon}>
+        <Icon name={video ? "Video" : "Phone"} size={22} />
+      </span>
+    </div>
+  );
+}
+
+/** На реакции — до трёх аватарок поставивших, как reactionsRow в messageBubble.js. */
+const PILL_AVATARS = 3;
+
+type PillProps = {
+  reaction: Reaction;
+  own: boolean;
+  play: boolean;
+  disabled: boolean;
+  userOf?: (userId: string) => MessageSender | null;
+  showAvatars?: boolean;
+  onReact: () => void;
+  onDetails?: (at: Point) => void;
+};
+
+function ReactionPill({ reaction: r, own, play, disabled, userOf, showAvatars = true, onReact, onDetails }: PillProps) {
+  const hold = useLongPress((at) => onDetails?.(at));
+  const avatars = showAvatars && userOf
+    ? r.userIds
+        .slice(0, PILL_AVATARS)
+        .map(userOf)
+        .filter((u): u is MessageSender => !!u)
+    : [];
+  const sticker = !!reactionSticker(r.emoji);
+  const isStar = r.emoji === "⭐";
+  return (
+    <button
+      type="button"
+      className={[styles.reaction, own ? styles.reactionMine : "", sticker ? styles.reactionSticker : "", isStar ? styles.reactionStar : ""].filter(Boolean).join(" ")}
+      aria-pressed={own}
+      aria-label={`${r.emoji} ${r.userIds.length}`}
+      disabled={disabled}
+      {...(onDetails ? { onPointerDown: hold.onPointerDown, onPointerMove: hold.onPointerMove, onPointerUp: hold.onPointerUp, onPointerCancel: hold.onPointerCancel, onPointerLeave: hold.onPointerLeave } : {})}
+      onContextMenu={(e) => {
+        if (!onDetails) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!hold.swallow(e)) onDetails({ x: e.clientX, y: e.clientY });
+      }}
+      onClick={(e) => {
+        if (!hold.swallow(e)) onReact();
+      }}
+    >
+      <span className={styles.reactionGlyph}>
+        <ReactionGlyph emoji={r.emoji} play={play} />
+      </span>
+      {avatars.length ? (
+        <span className={styles.reactionAvatars}>
+          {avatars.map((u) => (
+            <span key={u.id} className={styles.reactionAvatar} title={u.name}>
+              <Avatar size={16} name={u.name} color={u.avatarColor} image={u.avatarImage} emoji={u.avatarEmoji} />
+            </span>
+          ))}
+        </span>
+      ) : null}
+      <span className={styles.reactionCount}>{r.userIds.length}</span>
+    </button>
+  );
+}
+
+type StoryReply = { url?: string | null; kind?: string; authorName?: string | null; authorId?: string; createdAt?: string };
+
+/** Ответ на историю — миниатюра и подпись над текстом (story-reply-banner в messageBubble.js). Клик открывает просмотр истории. */
+function StoryReplyBanner({ reply, onOpenStory }: { reply: StoryReply; onOpenStory?: (reply: StoryReply) => void }) {
+  return (
+    <div
+      className={styles.storyReply}
+      role="button"
+      tabIndex={0}
+      aria-label={reply.authorName ? `История от ${reply.authorName}` : "История"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenStory?.(reply);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.stopPropagation();
+          onOpenStory?.(reply);
+        }
+      }}
+    >
+      {reply.url ? (
+        reply.kind === "video" ? (
+          <video className={styles.storyReplyThumb} src={reply.url} muted playsInline preload="metadata" />
+        ) : (
+          <img className={styles.storyReplyThumb} src={reply.url} alt="" loading="lazy" />
+        )
+      ) : null}
+      <span className={styles.storyReplyText}>
+        <span className={styles.storyReplyLabel}>Ответ на историю</span>
+        {reply.authorName ? <span className={styles.storyReplyAuthor}>{reply.authorName}</span> : null}
+      </span>
+    </div>
+  );
+}

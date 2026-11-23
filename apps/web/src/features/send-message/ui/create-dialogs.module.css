@@ -1,0 +1,482 @@
+.modes {
+  display: flex;
+  gap: 10px;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 1px;
+  scrollbar-width: none;
+}
+
+.steps::-webkit-scrollbar { display: none; }
+
+.step,
+.addStep {
+  flex: 0 0 auto;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.removeStep {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-danger) 7%, transparent);
+  color: var(--color-danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stepActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.addStep {
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-accent);
+}
+
+.stepCaption {
+  margin: -3px 2px 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.pollIntro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface-alt));
+}
+
+.pollIntroIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.pollIntro strong {
+  display: block;
+  font-size: 14px;
+}
+
+.pollIntro p {
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.mode {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-text) 10%, var(--color-border));
+  border-radius: 999px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mode.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+}
+
+.fieldLabel,
+.optionsHeader {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hint {
+  margin: -2px 2px 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.questionInput {
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  font-size: 15px;
+}
+
+.input:focus,
+.select:focus {
+  border-color: var(--color-accent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+  outline-offset: 1px;
+}
+
+.optionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.optionsHeader span:last-child {
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  display: flex;
+  max-height: 40vh;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.removeOption {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 25%, var(--color-border));
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.removeOption:hover {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+}
+
+.checklistDialog {
+  overflow-anchor: none;
+  gap: 16px;
+  padding: 22px;
+}
+
+.questionNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 420px) {
+  .pollDialog,
+  .checklistDialog {
+    width: min(100%, calc(100vw - 20px));
+    max-height: calc(100dvh - 20px);
+    overflow-y: auto;
+    padding: 16px;
+    gap: 14px;
+  }
+  .actions { flex-wrap: wrap; }
+}
+
+.checklistList {
+  max-height: min(42vh, 360px);
+  flex: 0 1 auto;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.checklistRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checklistRow .input {
+  flex: 1;
+}
+
+.optionNumber {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--color-surface-alt);
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.optionRow .input {
+  background: var(--color-surface);
+}
+
+.correct {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.correct.active {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+
+.add {
+  align-self: flex-start;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.setting {
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface-alt) 55%, transparent);
+}
+
+.setting input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.select {
+  min-width: 0;
+  max-width: 190px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.pollDialog {
+  width: min(520px, 100%);
+  max-height: min(94dvh, 820px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 420px) {
+  .pollDialog {
+    gap: 8px;
+    max-height: calc(100dvh - 8px);
+    padding: 12px;
+    border-radius: 20px 20px 14px 14px;
+  }
+
+  .pollIntro {
+    padding: 9px 10px;
+  }
+
+  .pollDialog .list {
+    max-height: 30dvh;
+  }
+
+  .pollDialog .setting {
+    min-height: 32px;
+    padding: 5px 7px;
+    font-size: 13px;
+  }
+
+  .pollDialog .fieldRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pollDialog .select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Найденные места (.loc-picker-results) и выбор контакта (.forward-list). */
+.places,
+.people {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.place,
+.person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.place:hover,
+.person:hover {
+  background: var(--color-surface-alt);
+}
+
+/* «Отправить позже» и список запланированных. */
+.repeat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.scheduled {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.scheduledRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.scheduledBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheduledText {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduledBody .hint {
+  margin: 2px 0 0;
+}
+
+.rowButton {
+  display: flex;
+  padding: 7px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.rowButton:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}

@@ -1,18 +1,56 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import cookieParser from 'cookie-parser';
-import { AppModule } from './app.module.js';
-import { DbService } from './db/db.service.js';
+import "reflect-metadata";
+import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import { AppModule } from "./app.module.js";
+import { RealtimeService } from "./modules/realtime/realtime.service.js";
+import { frontMiddleware } from "./legacy/front.middleware.js";
+import { LegacyFallbackAdapter } from "./legacy/legacy-fallback.adapter.js";
+import { legacyTrustProxy, loadLegacyApp, publicJsonReplacer, startLegacyRuntime, workerBridge } from "./legacy/legacy.js";
+import { BackgroundService } from "./modules/background/background.service.js";
+import { WEB_DIST_DIR, webClientBuilt } from "./static/lib/web-client.js";
+import { staticFiles } from "./static/static-files.js";
 
-const app = await NestFactory.create(AppModule);
-app.enableShutdownHooks();
-app.use(cookieParser());
-app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true });
-app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle('Nexora API').setVersion('1.0').addCookieAuth('nexora_token').build());
-SwaggerModule.setup('api/docs', app, document);
-app.getHttpAdapter().get('/api/health', (_req: unknown, response: { json: (value: unknown) => void }) => response.json({ ok: true, service: 'nexora-nest-api' }));
-app.getHttpAdapter().get('/api/health/ready', async (_req: unknown, response: { status: (code: number) => { json: (value: unknown) => void }; json: (value: unknown) => void }) => { try { await app.get(DbService).ready(); response.json({ ok: true, database: 'ready' }); } catch { response.status(503).json({ ok: false, database: 'unavailable' }); } });
-await app.listen(Number(process.env.PORT || 3000), process.env.HOST || '0.0.0.0');
+async function bootstrap() {
+  const legacy = loadLegacyApp();
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new LegacyFallbackAdapter(legacy.app, staticFiles()), {
+    // Тело запроса разбирает общая обработка (server/front.js, лимит 25 МБ); парсер
+    // Nest съел бы его раньше, с лимитом 100 КБ.
+    bodyParser: false,
+    logger: ["error", "warn"],
+  });
+  // Как у server/app.js: адрес клиента из X-Forwarded-For одного прокси (и доверенных
+  // прокси Nexora из NEXORA_TRUSTED_PROXIES, server/front.js), общий replacer JSON.
+  app.set("trust proxy", legacyTrustProxy());
+  app.set("json replacer", publicJsonReplacer);
+  // Раньше маршрутов Nest — тех же заголовков, cookie, тела и лимитов, что у старого приложения.
+  app.use(frontMiddleware());
+  await app.init();
+  // Node по умолчанию обрывает запрос через 5 минут (requestTimeout) — большой файл по
+  // медленной сети не успевал загрузиться. Тело загрузки идёт потоком; заголовки ждём
+  // по-прежнему недолго (headersTimeout), долгие медленные запросы режет nginx.
+  const httpServer = app.getHttpServer() as import("node:http").Server;
+  httpServer.requestTimeout = 3 * 60 * 60 * 1000;
+  // Очередь задач и обходы — в фоновом процессе (worker.ts), при BACKGROUND_WORKER=0 — здесь.
+  if (!workerBridge().enabled) app.get(BackgroundService).startInline();
+
+  // Фоновый процесс, RTMP и остановка по сигналу — как у server/index.js. WebSocket — шлюз
+  // Nest (modules/realtime), старый код шлёт события в него.
+  await startLegacyRuntime(
+    app.getHttpServer(),
+    async (port) => {
+      await app.listen(port, "0.0.0.0");
+      console.log(`nexora server (nest) listening on http://localhost:${port}`);
+      console.log(
+        webClientBuilt()
+          ? `[static] клиент — сборка ${WEB_DIST_DIR}`
+          : `[static] нет сборки клиента в ${WEB_DIST_DIR} — выполните npm run build (для разработки — npm run dev:web)`
+      );
+    },
+    app.get(RealtimeService)
+  );
+}
+
+bootstrap().catch((err) => {
+  console.error("bootstrap failed:", err);
+  process.exit(1);
+});

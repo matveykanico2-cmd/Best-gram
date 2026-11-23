@@ -1,0 +1,216 @@
+import type { remainingBody } from "@nexora/shared/schemas/auth";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import type { z } from "zod";
+
+import { switchAccount } from "@/features/accounts";
+import { SignInForm } from "@/features/sign-in";
+
+import { sessionQueries } from "@/entities/session";
+
+import { type BanInfo,clearBanned, http, ws } from "@/shared/api";
+import { Avatar, Icon } from "@/shared/ui";
+
+import styles from "./ban-screen.module.css";
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+/** «2 дня 3 часа», «5 часов 12 минут», «04:59» — чем ближе конец, тем точнее. */
+function formatLeft(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const hoursText = `${hours} ${plural(hours, "час", "часа", "часов")}`;
+  if (days) return `${days} ${plural(days, "день", "дня", "дней")}${hours ? ` ${hoursText}` : ""}`;
+  if (hours) return `${hoursText}${mins ? ` ${mins} ${plural(mins, "минута", "минуты", "минут")}` : ""}`;
+  return `${pad(mins)}:${pad(total % 60)}`;
+}
+
+function formatUntil(iso: string | number) {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+  return `${date} в ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Выход из заблокированного аккаунта на этом устройстве: есть другие аккаунты — переключаемся
+ * на первый, иначе — на экран входа.
+ */
+async function leave() {
+  ws.stop();
+  try {
+    const { remaining } = await http.post<z.infer<typeof remainingBody>>("/api/auth/logout");
+    if (remaining[0]) {
+      await http.post("/api/auth/switch", { userId: remaining[0] });
+      window.location.href = "/";
+      return;
+    }
+  } catch {
+    // Нет сети — cookie всё равно не снять; экран входа сам предложит войти заново.
+  }
+  window.location.href = "/login";
+}
+
+/**
+ * Экран блокировки аккаунта, как в Telegram (public/js/components/banScreen.js): вместо чатов и
+ * настроек — причина, до какого времени и сколько осталось, и «Назад», чтобы выйти.
+ */
+export function BanScreen({ ban }: { ban: BanInfo }) {
+  const session = useQuery(sessionQueries.current()).data;
+  const accounts = session?.accounts ?? [];
+  const currentId = session?.user?.id;
+  const parsedUntil = ban.bannedUntil ? Date.parse(ban.bannedUntil) : NaN;
+  const until = Number.isFinite(parsedUntil) ? parsedUntil : null;
+  const [now, setNow] = useState(Date.now);
+  const [leaving, setLeaving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const left = until !== null ? until - now : null;
+  const started = ban.bannedAt ? Date.parse(ban.bannedAt) : NaN;
+  const duration = until !== null && Number.isFinite(started) && until > started ? until - started : null;
+
+  const switchTo = async (userId: string) => {
+    if (leaving) return;
+    if (userId === currentId) return;
+    setLeaving(true);
+    try {
+      await switchAccount(userId);
+    } catch {
+      setLeaving(false);
+    }
+  };
+
+  const removeAccount = async (userId: string) => {
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      if (userId === currentId) {
+        await leave();
+        return;
+      }
+      await http.post("/api/auth/logout", { userId });
+      window.location.reload();
+    } catch {
+      setLeaving(false);
+    }
+  };
+
+  useEffect(() => {
+    backRef.current?.focus();
+    if (until === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [until]);
+
+  // Срок вышел — сервер уже пускает, достаточно перезагрузить.
+  useEffect(() => {
+    if (left !== null && left <= 0) window.location.reload();
+  }, [left]);
+
+  return (
+    <div className={styles.screen}>
+      <div className={styles.card} role="alertdialog" aria-modal="true" aria-labelledby="ban-screen-title">
+        <button
+          ref={backRef}
+          type="button"
+          className={styles.back}
+          disabled={leaving}
+          onClick={() => {
+            setLeaving(true);
+            void leave();
+          }}
+        >
+          <Icon name="ChevronLeft" size={18} />
+          Назад
+        </button>
+        <div className={styles.icon} aria-hidden="true">
+          <Icon name="Clock" size={44} />
+        </div>
+        <h1 className={styles.title} id="ban-screen-title">
+          Аккаунт заблокирован
+        </h1>
+        <p className={styles.text}>Администрация Nexora ограничила доступ к вашему аккаунту. Пока блокировка действует, чаты и настройки недоступны.</p>
+        {ban.banReason && (
+          <div className={styles.reason}>
+            <span className={styles.label}>Причина</span>
+            <p>{ban.banReason}</p>
+          </div>
+        )}
+        <div className={styles.term}>
+          <Icon name="Clock" size={18} />
+          <div>
+            <p className={styles.until}>{until !== null ? `Заблокирован до ${formatUntil(until)}` : "Блокировка бессрочная"}</p>
+            {duration !== null && <p className={styles.left}>{`Срок блокировки: ${formatLeft(duration)}`}</p>}
+            {left !== null && left > 0 && <p className={styles.left}>{`Осталось ${formatLeft(left)}`}</p>}
+          </div>
+        </div>
+        <a className={styles.appeal} aria-label="Подать апелляцию" title="Написать апелляцию по электронной почте" href={`mailto:nexora.support@gmail.com?subject=${encodeURIComponent("Апелляция на блокировку аккаунта Nexora")}`}>
+          Подать апелляцию
+        </a>
+        <p className={styles.hint}>nexora.support@gmail.com</p>
+        {accounts.length > 1 ? (
+          <div className={styles.accounts}>
+            <p className={styles.accountsTitle}>Другие аккаунты</p>
+            {accounts.map((account) => (
+              <button type="button" className={styles.account} key={account.id} disabled={leaving} onClick={() => void switchTo(account.id)}>
+                <Avatar name={account.name || account.email || "?"} color={account.avatarColor} image={account.avatarImage} emoji={account.avatarEmoji} size={34} />
+                <span>{account.name || account.email || "Аккаунт"}{account.id === currentId ? " · заблокирован" : ""}</span>
+                <Icon name="ChevronRight" size={17} />
+                <span
+                  role="button"
+                  tabIndex={leaving ? -1 : 0}
+                  className={styles.accountRemove}
+                  title="Выйти из аккаунта"
+                  aria-label={`Выйти из аккаунта ${account.name || account.email || ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void removeAccount(account.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void removeAccount(account.id);
+                    }
+                  }}
+                >
+                  <Icon name="X" size={16} />
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {adding ? (
+          <div className={styles.addAccount}>
+            <div className={styles.addHeader}>
+              <strong>Добавить аккаунт</strong>
+              <button type="button" className={styles.closeAdd} aria-label="Закрыть добавление аккаунта" onClick={() => setAdding(false)}>
+                <Icon name="X" size={18} />
+              </button>
+            </div>
+            <SignInForm
+              onSignedIn={() => {
+                clearBanned();
+                window.location.reload();
+              }}
+            />
+          </div>
+        ) : (
+          <button type="button" className={styles.addButton} onClick={() => setAdding(true)}>
+            <Icon name="Plus" size={17} /> Добавить аккаунт
+          </button>
+        )}
+        <p className={styles.hint}>«Назад» — выйти из заблокированного аккаунта</p>
+      </div>
+    </div>
+  );
+}

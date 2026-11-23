@@ -1,0 +1,439 @@
+/* Полоса историй — как .stories-bar и .story-item в public/styles/components.css. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  scrollbar-width: none;
+}
+.bar::-webkit-scrollbar {
+  display: none;
+}
+.storyItems {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.storyItems::-webkit-scrollbar {
+  display: none;
+}
+.item {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  width: 68px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ring {
+  position: relative;
+  display: flex;
+  padding: 2px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  /* Своё наложение: иначе кольцо непросмотренной (z-index: -1) уходит под фон ленты. */
+  isolation: isolate;
+}
+.seen {
+  border-color: var(--color-border);
+}
+.unseen::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 999px;
+  padding: 2px;
+  background: conic-gradient(from 0deg, var(--color-accent), #36c3ff, #7b61ff, var(--color-accent));
+  animation: story-ring-spin 3s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+@keyframes story-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unseen::before {
+    animation: none;
+  }
+}
+/* «Текст» — текстовая история: кольцо в цвет акцента, как .story-item-text в main2. */
+.textRing {
+  display: flex;
+  width: 48px;
+  height: 48px;
+  margin: 4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+.addBadge {
+  position: absolute;
+  top: 38px;
+  left: 38px;
+  display: flex;
+  height: 18px;
+  width: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid var(--color-surface);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+.label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+/* Выбор при создании истории: текстовый пост или фото/видео. */
+.createChoice {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+.createAction, .createClose {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: var(--color-muted-bg);
+  color: inherit;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.createAction:hover, .createClose:hover { background: var(--color-accent-muted); }
+.createClose { padding: 0 7px; }
+.createChoice .item {
+  width: auto;
+  min-width: 56px;
+}
+
+.attachmentChoice {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 2px;
+  border-top: 1px solid var(--color-border);
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachmentItem {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 28px 0 9px;
+  border-radius: 10px;
+  background: var(--color-muted-bg);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.attachmentItem .mediaSelectionRemove {
+  top: 5px;
+  right: 4px;
+}
+
+/* Выбор медиа перед публикацией истории — можно добавить ещё фото/видео. */
+.mediaSelection {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 560px);
+  min-width: 0;
+  max-width: 560px;
+  box-sizing: border-box;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+}
+.mediaSelectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.mediaSelectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr));
+  gap: 8px;
+}
+.mediaSelectionItem {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(110deg, #121a24 20%, #243447 42%, #172331 58%, #121a24 80%);
+  background-size: 220% 100%;
+  animation: story-media-shimmer 1.2s ease-in-out infinite;
+}
+.mediaSelectionThumb {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes story-media-shimmer {
+  to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mediaSelectionItem {
+    animation: none;
+  }
+}
+.mediaSelectionRemove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
+.mediaSelectionRemove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+.mediaSelectionKind {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 2;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.mediaSelectionAdd {
+  display: flex;
+  aspect-ratio: 4 / 5;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+.mediaSelectionAdd:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+.mediaSelectionActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.mediaSelectionCancel {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mediaSelectionCancel:hover {
+  background: var(--color-muted-bg);
+}
+.mediaSelectionPublish {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mediaSelectionPublish:hover {
+  opacity: 0.9;
+}
+
+.builderDialog {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.builderHint {
+  margin: 0 0 14px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.builderBlock {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.builderBlockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.builderBlockHeader button {
+  border: 0;
+  background: transparent;
+  color: #f06b6b;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.builderInput {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.builderInput:focus {
+  border-color: var(--color-accent);
+}
+
+.builderAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px dashed var(--color-accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.builderFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+@media (max-width: 420px) {
+  .bar {
+    overflow-x: hidden;
+  }
+
+  .storyItems {
+    overflow-x: hidden;
+  }
+
+  .createChoice {
+    align-content: flex-start;
+    gap: 5px;
+  }
+
+  .createAction,
+  .createClose {
+    max-width: 100%;
+  }
+
+  .mediaSelection {
+    padding: 10px;
+  }
+
+  .mediaSelectionGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .mediaSelectionRemove {
+    top: 3px;
+    right: 3px;
+  }
+
+  .mediaSelectionActions {
+    justify-content: stretch;
+  }
+
+  .mediaSelectionCancel,
+  .mediaSelectionPublish {
+    flex: 1;
+  }
+}

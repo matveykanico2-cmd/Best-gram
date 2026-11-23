@@ -1,0 +1,358 @@
+/* Окна сообществ — как tw-section/tw-row в public/styles (communityEditor.js). */
+.wide {
+  width: min(460px, 100%);
+}
+
+.sectionName {
+  margin: 4px 0 0;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.caption {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.list {
+  display: flex;
+  max-height: 46vh;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+}
+
+button.row {
+  cursor: pointer;
+}
+
+button.row:hover:not(:disabled) {
+  background: var(--color-surface-alt);
+}
+
+.row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.danger {
+  color: var(--color-danger);
+}
+
+.accent {
+  color: var(--color-accent);
+}
+
+.rowIcon {
+  display: flex;
+  flex: none;
+  color: var(--color-muted);
+}
+
+.danger .rowIcon,
+.accent .rowIcon {
+  color: inherit;
+}
+
+.rowBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.rowSub {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  overflow: hidden;
+  color: var(--color-accent);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loadError {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: var(--color-danger);
+  font-size: 13px;
+  text-align: center;
+}
+
+.rowRight {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.radio {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-muted);
+  border-radius: 50%;
+}
+
+.radioOn {
+  border-color: var(--color-accent);
+  box-shadow:
+    inset 0 0 0 3px var(--color-surface),
+    inset 0 0 0 10px var(--color-accent);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.invalid {
+  border-color: var(--color-danger);
+}
+
+.center {
+  align-self: center;
+}
+
+.avatarGallery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.avatarGalleryItem {
+  position: relative;
+  min-width: 92px;
+}
+
+.removeAvatar {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-danger);
+  color: #fff;
+  cursor: pointer;
+}
+
+.deleteCommunity {
+  width: 100%;
+  min-height: 60px;
+  margin-top: 12px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.iconButton {
+  display: flex;
+  flex: none;
+  padding: 6px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--color-surface-alt);
+}
+
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Значок и подпись рядом с именем администратора. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 20px;
+  height: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--color-accent);
+  background: var(--color-surface-alt);
+  margin: 0;
+}
+
+.iconRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+
+.badgeField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badgeField :global(input) { min-width: 0; }
+
+@media (max-width: 520px) {
+  .buttons { position: sticky; bottom: -16px; padding: 12px 0 4px; background: var(--panel-bg); }
+  .sectionName { margin-top: 8px; }
+}
+
+.badgeField > input {
+  min-width: 0;
+  flex: 1;
+}
+
+.selectedIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.clearBadge {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+}
+
+.iconPickOn {
+  background: var(--color-accent-soft) !important;
+  color: var(--color-accent) !important;
+}
+
+.contactPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--color-surface-alt);
+}
+
+.selectAll {
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.memberCheck {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-accent-contrast);
+}
+
+.memberCheckOn {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.iconPick {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  cursor: pointer;
+}

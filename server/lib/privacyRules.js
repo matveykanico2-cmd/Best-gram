@@ -1,0 +1,161 @@
+const { getSettings } = require("../data/settings");
+const { listContactsFor } = require("../data/contacts");
+
+const LEVELS = new Set(["everyone", "contacts", "nobody"]);
+
+// Как в DEFAULT_SETTINGS.privacy (data/settings.js): отсутствующий ключ не должен открывать больше, чем умолчание.
+const DEFAULT_LEVELS = { phone: "contacts", storiesArchive: "nobody" };
+const defaultLevelFor = (key) => DEFAULT_LEVELS[key] ?? "everyone";
+
+const PRIVACY_KEYS = [
+  "lastSeen",
+  "phone",
+  "discoverByPhone",
+  "photo",
+  "bio",
+  "birthday",
+  "forwards",
+  "invites",
+  "calls",
+  "messages",
+  "botMessages",
+  "storiesArchive",
+];
+
+const MAX_PER_LIST = 200;
+
+function idsOf(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const id of value) {
+    if (typeof id !== "string" || !id) continue;
+    if (!out.includes(id)) out.push(id);
+    if (out.length >= MAX_PER_LIST) break;
+  }
+  return out;
+}
+
+function exceptionsFor(privacy, key) {
+  const raw = privacy?.exceptions?.[key];
+  return { allow: idsOf(raw?.allow), deny: idsOf(raw?.deny) };
+}
+
+function normalizePrivacy(privacy) {
+  if (!privacy || typeof privacy !== "object") return privacy;
+  const next = { ...privacy };
+  delete next.exceptions;
+  const raw = privacy.exceptions;
+  if (!raw || typeof raw !== "object") return next;
+  const exceptions = {};
+  for (const key of PRIVACY_KEYS) {
+    const { allow, deny } = exceptionsFor({ exceptions: raw }, key);
+    const cleanAllow = allow.filter((id) => !deny.includes(id));
+    if (cleanAllow.length || deny.length) exceptions[key] = { allow: cleanAllow, deny };
+  }
+  if (Object.keys(exceptions).length) next.exceptions = exceptions;
+  return next;
+}
+
+function privacyAllows(privacy, key, viewerId, isContact) {
+  const { allow, deny } = exceptionsFor(privacy, key);
+  if (viewerId && deny.includes(viewerId)) return false;
+  if (viewerId && allow.includes(viewerId)) return true;
+  const level = LEVELS.has(privacy?.[key]) ? privacy[key] : defaultLevelFor(key);
+  if (level === "everyone") return true;
+  if (level === "nobody") return false;
+  return !!isContact;
+}
+
+async function allowsUser(ownerId, key, viewerId) {
+  if (ownerId === viewerId) return true;
+  const { privacy } = await getSettings(ownerId);
+  const { allow, deny } = exceptionsFor(privacy, key);
+  if (deny.includes(viewerId)) return false;
+  if (allow.includes(viewerId)) return true;
+  const level = LEVELS.has(privacy?.[key]) ? privacy[key] : defaultLevelFor(key);
+  if (level === "everyone") return true;
+  if (level === "nobody") return false;
+  const contacts = await listContactsFor(ownerId);
+  return contacts.some((c) => c.userId === viewerId);
+}
+
+// Время прочтения пишем только в личке и только если читатель показывает
+// собеседнику, когда был в сети, — как в Telegram.
+async function recordsReadTime(chat, readerId) {
+  if (chat?.type !== "dm") return false;
+  const other = chat.memberIds.find((id) => id !== readerId);
+  return !!other && (await allowsUser(readerId, "lastSeen", other));
+}
+
+// Как в Telegram: у себя в контактах человек подписан вашим именем для него —
+// везде (список чатов, заголовок, сообщения). Имя из профиля — в profileName.
+// inContacts — он у вас в контактах, mutualContact — и вы у него.
+function applyContactName(visible, myContact, theyHaveMe) {
+  visible.inContacts = !!myContact || undefined;
+  visible.mutualContact = (!!myContact && theyHaveMe) || undefined;
+  const localName = myContact?.localName?.trim();
+  if (localName && localName !== visible.name) {
+    visible.profileName = visible.name;
+    visible.name = localName;
+  }
+  // Своё фото или смайл контакта — их видит только владелец, вместо аватарки из профиля.
+  // Смайл лежит в localAvatar как «emoji:😀» (или «emoji:sticker:/uploads/…»).
+  const localAvatar = myContact?.localAvatar;
+  if (localAvatar) {
+    visible.profileAvatarEmoji = visible.avatarEmoji ?? null;
+    if (myContact?.localAvatarColor) visible.avatarColor = myContact.localAvatarColor;
+  }
+  if (localAvatar?.startsWith("emoji:")) {
+    // Смайл рисуется поверх фото, фото из профиля остаётся как есть.
+    visible.avatarEmoji = localAvatar.slice("emoji:".length);
+  } else if (localAvatar) {
+    visible.profileAvatarImage = visible.avatarImage ?? null;
+    visible.avatarImage = localAvatar;
+    // Смайл или стикер на аватарке рисуется поверх фото — своё фото должно быть видно.
+    delete visible.avatarEmoji;
+  }
+  return visible;
+}
+
+// Заблокированному — как будто всё скрыто настройками (как hideFromBlocked в
+// apps/api modules/users/lib/privacy-rules.ts).
+function hideFromBlocked(visible) {
+  for (const key of ["avatarImage", "avatarImages", "avatarEmoji", "lastSeen", "phone", "bio", "birthday", "profileLinks"]) delete visible[key];
+  visible.online = false;
+}
+
+// publicUser(), но с учётом приватности того, чей профиль смотрят: время
+// визита, фото, «о себе» и день рождения — как в GET /users/:id.
+async function publicUserFor(user, viewerId) {
+  const { publicUser } = require("../data/sanitize");
+  const visible = publicUser(user);
+  if (!user || user.id === viewerId) return visible;
+  const { privacy } = await getSettings(user.id);
+  const isContact = (await listContactsFor(user.id)).some((c) => c.userId === viewerId);
+  const canSee = (key) => privacyAllows(privacy, key, viewerId, isContact);
+  const blocked = (user.blockedUserIds ?? []).includes(viewerId);
+  if (blocked) {
+    hideFromBlocked(visible);
+    visible.blockedViewer = true;
+  }
+  if (!canSee("lastSeen")) {
+    delete visible.lastSeen;
+    visible.online = false;
+  }
+  if (!canSee("photo")) {
+    delete visible.avatarImage;
+    delete visible.avatarImages;
+    delete visible.avatarEmoji;
+  }
+  if (!canSee("bio")) delete visible.bio;
+  if (!canSee("birthday")) delete visible.birthday;
+  // После скрытия: своё фото контакта не должно вытаскивать скрытое фото из профиля.
+  applyContactName(visible, (await listContactsFor(viewerId)).find((c) => c.userId === user.id), isContact);
+  return visible;
+}
+
+function publicUsersFor(users, viewerId) {
+  return Promise.all(users.map((u) => publicUserFor(u, viewerId)));
+}
+
+module.exports = { PRIVACY_KEYS, privacyAllows, allowsUser, normalizePrivacy, exceptionsFor, recordsReadTime, publicUserFor, publicUsersFor, applyContactName };

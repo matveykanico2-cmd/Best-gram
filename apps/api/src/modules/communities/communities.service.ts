@@ -1,0 +1,387 @@
+import { Injectable } from "@nestjs/common";
+import { ApiError } from "../../common/errors/api-error.js";
+import { AVATAR_EMOJI_ERROR, cleanAvatarEmoji } from "../../common/lib/avatar-emoji.js";
+import { genId } from "../../common/lib/gen-id.js";
+import { usesForeignUpload } from "../../legacy/legacy.js";
+import { ChatsRepository } from "../chats/chats.repository.js";
+import { MessagesRepository } from "../messages/messages.repository.js";
+import { RealtimeService } from "../realtime/realtime.service.js";
+import { UserSettingsService } from "../users/user-settings.service.js";
+import { CommunitiesRepository } from "./communities.repository.js";
+import { CommunityAccessService } from "./community-access.service.js";
+import { cleanAvatarImage, isChatAdmin } from "./lib/community-fields.js";
+import type { Community, CommunityAvatar, CommunityPatch } from "./model/domain.js";
+import type { AddMembersDto, CreateCommunityDto, MembersQuery, MuteDto, PatchCommunityDto, PrefsDto } from "./model/schemas/community.schema.js";
+
+const MAX_MEMBERS = 200;
+const MAX_MEDIA_MESSAGES = 300;
+const MAX_MEDIA_ITEMS = 300;
+const LINK_RE = /https?:\/\/[^\s<]+/i;
+
+// Сообщества (как в tweb, layer 228+): несколько групп и каналов под одной вывеской, со своим
+// членством (выход — только из сообщества) и личными настройками строки в списке чатов —
+// server/routes/communities.js. Чаты и заявки — CommunityChatsService, админы и удалённые —
+// CommunityAdminsService.
+@Injectable()
+export class CommunitiesService {
+  public constructor(
+    private readonly access: CommunityAccessService,
+    private readonly communities: CommunitiesRepository,
+    private readonly chats: ChatsRepository,
+    private readonly messages: MessagesRepository,
+    private readonly userSettings: UserSettingsService,
+    private readonly realtime: RealtimeService,
+  ) {}
+
+  /** Сообщества, в которые пользователь может добавить (или предложить) свой чат. */
+  public async mine(uid: string) {
+    const communities = [];
+    for (const item of this.communities.listForUser(uid)) {
+      const c = await this.ensureGeneralChat(item);
+      const addPolicy = this.access.addPolicy(c, uid);
+      if (addPolicy) communities.push({ id: c.id, title: c.title, avatarColor: c.avatarColor ?? null, avatarImage: c.avatarImage ?? null, avatarEmoji: c.avatarEmoji ?? null, ...(c.avatarImages.length ? { avatarImages: c.avatarImages } : {}), chatCount: c.chatIds.length, addPolicy });
+    }
+    return {
+      communities,
+    };
+  }
+
+  /** Для списка чатов (как в tweb): сообщество — отдельная строка, его чаты — в панели. */
+  public async joined(uid: string) {
+    const joined = [];
+    for (const item of this.communities.listForUser(uid)) {
+      const c = await this.ensureGeneralChat(item);
+      const rights = this.access.rightsOf(c, uid);
+      const chats = this.access.visibleChats(c, uid, rights);
+      joined.push({
+        id: c.id,
+        title: c.title,
+        description: c.description ?? null,
+        avatarColor: c.avatarColor ?? null,
+        avatarImage: c.avatarImage ?? null,
+        avatarEmoji: c.avatarEmoji ?? null,
+        ...(c.avatarImages.length ? { avatarImages: c.avatarImages } : {}),
+        role: this.access.roleOf(c, uid),
+        isOwner: c.ownerId === uid,
+        rights,
+        addMode: c.addMode,
+        ...this.access.prefsOf(c.id, uid),
+        chatIds: chats.filter((ch) => ch.id !== c.generalChatId).map((ch) => ch.id),
+        generalChatId: c.generalChatId ?? null,
+        requestsCount: rights.editChats ? this.communities.countRequests(c.id) : 0,
+      });
+    }
+    return {
+      communities: joined,
+    };
+  }
+
+  public async byChat(uid: string, chatId: string) {
+    const chat = this.chats.findById(chatId);
+    if (!chat || (!chat.memberIds.includes(uid) && !chat.isPublic)) throw new ApiError(404, "not found");
+    const community = this.communities.findByChat(chat.id);
+    if (!community) return { community: null };
+    const fresh = await this.ensureGeneralChat(community);
+    const rights = this.access.rightsOf(community, uid);
+    return {
+      community: {
+        id: fresh.id,
+        title: fresh.title,
+        avatarColor: fresh.avatarColor ?? null,
+        avatarImage: fresh.avatarImage ?? null,
+        avatarEmoji: fresh.avatarEmoji ?? null,
+        ...(fresh.avatarImages.length ? { avatarImages: fresh.avatarImages } : {}),
+        isOwner: fresh.ownerId === uid,
+        isMember: !!this.access.roleOf(fresh, uid),
+        // Убрать чат может тот, кто управляет чатами сообщества, или админ самого чата.
+        canRemoveChat: rights.editChats || isChatAdmin(chat, uid),
+        isGeneral: fresh.generalChatId === chat.id,
+      },
+    };
+  }
+
+  public async create(uid: string, dto: CreateCommunityDto) {
+    const first = dto.chatId ? this.access.addableChat(dto.chatId, uid) : null;
+    const avatarImage = cleanAvatarImage(dto.avatarImage);
+    if (avatarImage === undefined || usesForeignUpload(uid, avatarImage)) throw new ApiError(400, "Некорректное изображение");
+    const avatarEmoji = dto.avatarEmoji === undefined ? null : cleanAvatarEmoji(dto.avatarEmoji);
+    if (avatarEmoji === undefined) throw new ApiError(400, AVATAR_EMOJI_ERROR);
+    if (usesForeignUpload(uid, avatarEmoji)) throw new ApiError(400, "Некорректное изображение");
+    const avatarImages = cleanAvatarGallery(uid, dto.avatarImages);
+    const community = this.communities.create({
+      id: genId("cm"),
+      ownerId: uid,
+      title: dto.title,
+      description: dto.description,
+      avatarColor: dto.avatarColor,
+      // Фото и смайл взаимоисключают друг друга: при обоих остаётся фото.
+      avatarImage,
+      avatarEmoji: avatarImage ? null : avatarEmoji,
+      avatarImages,
+      addMode: dto.addMode,
+    });
+    const general = this.chats.create({
+      id: genId("c"),
+      type: "group",
+      title: dto.title,
+      avatarColor: avatarImage ? undefined : (dto.avatarColor ?? "#2E56D9"),
+      avatarImage: avatarImage ?? undefined,
+      avatarEmoji: avatarImage ? null : avatarEmoji,
+      avatarType: avatarImage ? "image" : avatarEmoji ? "emoji" : null,
+      memberIds: [uid],
+      ownerId: uid,
+      adminIds: [uid],
+      pinned: false,
+      muted: false,
+      archived: false,
+      createdAt: new Date().toISOString(),
+    });
+    this.communities.setGeneralChat(community.id, general.id);
+    await this.access.linkChat(this.communities.findById(community.id)!, general, { visible: true, addedBy: uid });
+    if (first) await this.access.linkChat(community, first, { visible: dto.chatVisible, addedBy: uid });
+    return { community: this.access.view(this.access.reload(community.id), uid) };
+  }
+
+  public async get(uid: string, id: string) {
+    const community = this.access.load(id, uid);
+    if (this.communities.isBanned(community.id, uid) && community.ownerId !== uid) throw new ApiError(403, "Вас удалили из этого сообщества");
+    return { community: this.access.view(await this.ensureGeneralChat(community), uid) };
+  }
+
+  public async patch(uid: string, id: string, dto: PatchCommunityDto) {
+    const community = await this.ensureGeneralChat(this.access.load(id, uid));
+    const rights = this.access.rightsOf(community, uid);
+    const patch: CommunityPatch = {};
+    const infoTouched = dto.title !== undefined || dto.description !== undefined || dto.avatarColor !== undefined || dto.avatarImage !== undefined || dto.avatarEmoji !== undefined || dto.avatarImages !== undefined;
+    if (infoTouched && !rights.editInfo) throw new ApiError(403, "Нет права менять информацию о сообществе");
+    if (dto.title !== undefined) {
+      if (!dto.title) throw new ApiError(400, "Введите название сообщества");
+      patch.title = dto.title;
+    }
+    if (dto.description !== undefined) patch.description = dto.description;
+    if (dto.avatarColor !== undefined) patch.avatarColor = dto.avatarColor;
+    if (dto.avatarImage !== undefined) {
+      const avatarImage = cleanAvatarImage(dto.avatarImage);
+      if (avatarImage === undefined || usesForeignUpload(uid, avatarImage, community.avatarImage)) throw new ApiError(400, "Некорректное изображение");
+      patch.avatarImage = avatarImage;
+    }
+    if (dto.avatarEmoji !== undefined) {
+      const avatarEmoji = cleanAvatarEmoji(dto.avatarEmoji);
+      if (avatarEmoji === undefined) throw new ApiError(400, AVATAR_EMOJI_ERROR);
+      if (usesForeignUpload(uid, avatarEmoji, community.avatarEmoji)) throw new ApiError(400, "Некорректное изображение");
+      patch.avatarEmoji = avatarEmoji;
+    }
+    if (dto.avatarImages !== undefined) {
+      const gallery = cleanAvatarGallery(uid, dto.avatarImages);
+      patch.avatarImages = gallery;
+      const first = gallery[0];
+      if (first?.kind === "image") {
+        patch.avatarImage = first.url;
+        patch.avatarEmoji = null;
+      } else if (first?.kind === "emoji") {
+        patch.avatarImage = null;
+        patch.avatarEmoji = first.emoji;
+      } else {
+        patch.avatarImage = null;
+        patch.avatarEmoji = null;
+      }
+    }
+    // Фото и смайл на аватарке взаимоисключают друг друга: новое сменяет прежнее.
+    if (patch.avatarImage && patch.avatarEmoji === undefined) patch.avatarEmoji = null;
+    if (patch.avatarEmoji && patch.avatarImage === undefined) patch.avatarImage = null;
+    if (dto.addMode !== undefined) {
+      if (!rights.editChats) throw new ApiError(403, "Нет права менять список чатов");
+      if (!dto.addMode) throw new ApiError(400, "Некорректный режим добавления чатов");
+      patch.addMode = dto.addMode;
+    }
+    // Пустая правка ничего не меняет и никого не оповещает; постороннему — отказ.
+    if (!Object.keys(patch).length) {
+      if (!rights.editInfo && !rights.editChats) throw new ApiError(403, "Недостаточно прав");
+      return { community: this.access.view(community, uid) };
+    }
+    const updated = this.communities.update(community.id, patch)!;
+    if (patch.title && community.generalChatId) this.chats.update(community.generalChatId, { title: patch.title });
+    this.access.notify(community.id);
+    return { community: this.access.view(updated, uid) };
+  }
+
+  private async ensureGeneralChat(community: Community): Promise<Community> {
+    if (community.generalChatId && this.chats.findById(community.generalChatId)) return community;
+    const general = this.chats.create({
+      id: genId("c"),
+      type: "group",
+      title: community.title,
+      avatarColor: community.avatarImage ? undefined : (community.avatarColor ?? "#2E56D9"),
+      avatarImage: community.avatarImage ?? undefined,
+      avatarEmoji: community.avatarImage ? null : community.avatarEmoji,
+      avatarType: community.avatarImage ? "image" : community.avatarEmoji ? "emoji" : null,
+      memberIds: [community.ownerId],
+      ownerId: community.ownerId,
+      adminIds: [community.ownerId],
+      pinned: false,
+      muted: false,
+      archived: false,
+      createdAt: new Date().toISOString(),
+    });
+    this.communities.setGeneralChat(community.id, general.id);
+    await this.access.linkChat(this.communities.findById(community.id)!, general, { visible: true, addedBy: community.ownerId });
+    return this.communities.findById(community.id)!;
+  }
+
+  public delete(uid: string, id: string) {
+    const community = this.access.load(id, uid, "owner");
+    const members = this.communities.listMemberIds(community.id);
+    this.communities.delete(community.id);
+    if (community.generalChatId) this.chats.delete(community.generalChatId);
+    this.access.notifyUsers(members, community.id);
+    return { ok: true };
+  }
+
+  /**
+   * Вступить. Сообщество открытое, если в нём есть видимый публичный чат; иначе — только по
+   * приглашению в один из его чатов (участник чата — уже участник сообщества) или вернуться,
+   * если вы в нём уже были. Вступивший сразу состоит в открытых группах и каналах сообщества.
+   */
+  public async join(uid: string, id: string) {
+    const community = await this.ensureGeneralChat(this.access.load(id, uid));
+    if (this.communities.isBanned(community.id, uid)) throw new ApiError(403, "Вас удалили из этого сообщества");
+    if (!this.access.roleOf(community, uid) && !this.communities.memberRow(community.id, uid)) {
+      const open = this.access.visibleChats(community, uid, this.access.rightsOf(community, uid)).some((c) => c.isPublic);
+      if (!open) throw new ApiError(403, "Сообщество закрытое — вступить можно только по приглашению в один из его чатов");
+    }
+    const row = this.communities.memberRow(community.id, uid);
+    const alreadyJoined = community.ownerId === uid || (!!row && !row.left);
+    this.communities.join(community.id, uid);
+    // Членство единое: повторный вызов также восстанавливает недостающий чат.
+    if (!alreadyJoined || community.chatIds.length) this.access.addToChats(this.access.reload(community.id), uid);
+    // Открытые страницы сообщества у остальных обновляют число участников сразу.
+    this.access.notify(community.id);
+    return { community: this.access.view(community, uid) };
+  }
+
+  public leave(uid: string, id: string) {
+    const community = this.access.load(id, uid, "member");
+    if (community.ownerId === uid) throw new ApiError(400, "Владелец не может покинуть сообщество — его можно только удалить");
+    this.access.removeFromChats(community, uid);
+    this.communities.leave(community.id, uid);
+    this.access.notify(community.id, [uid]);
+    return { ok: true };
+  }
+
+  /** Закрепить строку / показывать одной строкой (tweb toggleCollapsedInDialogs). */
+  public setPrefs(uid: string, id: string, dto: PrefsDto) {
+    const community = this.access.load(id, uid, "member");
+    this.communities.setPrefs(community.id, uid, { pinned: dto.pinned, collapsed: dto.collapsed });
+    return { community: this.access.view(community, uid) };
+  }
+
+  /** Без звука — сразу на все мои чаты сообщества: { forever } | { hours } | { off }. */
+  public mute(uid: string, id: string, dto: MuteDto) {
+    const community = this.access.load(id, uid, "member");
+    const { hours } = dto;
+    const value =
+      dto.forever ? true : dto.off ? null : Number.isFinite(hours) && hours > 0 ? new Date(Date.now() + hours * 3600_000).toISOString() : undefined;
+    if (value === undefined) throw new ApiError(400, "Укажите срок");
+    const settings = this.userSettings.get(uid);
+    const mutedChats = { ...(settings.notifications?.mutedChats ?? {}) };
+    for (const chat of this.access.myChats(community, uid)) {
+      if (value === null) delete mutedChats[chat.id];
+      else mutedChats[chat.id] = value;
+    }
+    this.userSettings.update(uid, { notifications: { ...settings.notifications, mutedChats } });
+    return { ok: true };
+  }
+
+  public read(uid: string, id: string) {
+    const community = this.access.load(id, uid, "member");
+    for (const chat of this.access.myChats(community, uid)) {
+      const changedIds = this.messages.markChatRead(chat.id, uid, false);
+      if (changedIds.length) {
+        this.realtime.broadcastToUsers(
+          chat.memberIds.filter((m) => m !== uid),
+          { type: "message:read", chatId: chat.id, readerId: uid, messageIds: changedIds },
+        );
+      }
+    }
+    return { ok: true };
+  }
+
+  /** Участники — для выбора админа или удаления; q — поиск по имени и нику. */
+  public members(uid: string, id: string, query: MembersQuery) {
+    const community = this.access.load(id, uid, "member");
+    const { q } = query;
+    const admins = new Set(this.communities.listAdmins(community.id).map((a) => a.userId));
+    const users = [];
+    for (const memberId of this.communities.listMemberIds(community.id)) {
+      const role = memberId === community.ownerId ? "owner" : admins.has(memberId) ? "admin" : "member";
+      const u = this.access.userCard(memberId, { role });
+      if (!u) continue;
+      if (q && !`${u.name ?? ""} ${u.username ?? ""}`.toLowerCase().includes(q)) continue;
+      users.push(u);
+      if (users.length >= MAX_MEMBERS) break;
+    }
+    return { users };
+  }
+
+  /** Добавить людей сразу в сообщество и во все его группы/каналы. */
+  public addMembers(uid: string, id: string, dto: AddMembersDto) {
+    const community = this.access.load(id, uid, "member");
+    if (community.addMode !== "all" && !this.access.rightsOf(community, uid).ban) {
+      throw new ApiError(403, "Добавлять участников могут только администраторы");
+    }
+    const targets = dto.userIds.filter((userId) => userId !== uid);
+    for (const userId of targets) {
+      if (!this.access.userCard(userId)) throw new ApiError(404, "Пользователь не найден");
+      if (this.communities.isBanned(community.id, userId)) throw new ApiError(409, "Сначала верните пользователя из удалённых");
+    }
+    for (const userId of targets) {
+      this.communities.join(community.id, userId);
+      // Повторное добавление чинит недостающее членство в отдельных чатах.
+      this.access.addToChats(this.access.reload(community.id), userId, uid);
+    }
+    if (targets.length) this.access.notify(community.id, targets);
+    return { community: this.access.view(this.access.reload(community.id), uid) };
+  }
+
+  /** Медиа, файлы и ссылки всех чатов сообщества, в которых состоит участник. */
+  public media(uid: string, id: string) {
+    const community = this.access.load(id, uid, "member");
+    const chatIds = this.access.myChats(community, uid).map((chat) => chat.id);
+    const clearedBefore = this.userSettings.get(uid).chatClears ?? {};
+    const messages = this.messages.listMediaForChats(chatIds, uid, clearedBefore, MAX_MEDIA_MESSAGES);
+    const media = [];
+    const files = [];
+    const links = [];
+    for (const message of messages) {
+      for (const attachment of message.attachments ?? []) {
+        const item = { chatId: message.chatId, messageId: message.id, createdAt: message.createdAt, senderId: message.senderId, attachment };
+        if ((attachment.kind === "image" || attachment.kind === "video") && media.length < MAX_MEDIA_ITEMS) media.push(item);
+        else if (attachment.kind === "file" && files.length < MAX_MEDIA_ITEMS) files.push(item);
+      }
+      if (links.length < MAX_MEDIA_ITEMS && (message.linkPreview || LINK_RE.test(message.text ?? ""))) {
+        links.push({ chatId: message.chatId, messageId: message.id, createdAt: message.createdAt, text: message.text, linkPreview: message.linkPreview });
+      }
+    }
+    return { media, files, links };
+  }
+}
+
+function cleanAvatarGallery(uid: string, value: unknown): CommunityAvatar[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new ApiError(400, "Некорректная галерея аватаров");
+  const result: CommunityAvatar[] = [];
+  for (const rawEntry of value.slice(0, 20)) {
+    if (!rawEntry || typeof rawEntry !== "object") continue;
+    const entry = rawEntry as { kind?: unknown; url?: unknown; emoji?: unknown };
+    if (entry.kind === "image" && typeof entry.url === "string") {
+      const url = cleanAvatarImage(entry.url);
+      if (url === undefined || usesForeignUpload(uid, url)) throw new ApiError(400, "Некорректное изображение");
+      if (url) result.push({ kind: "image", url });
+    } else if (entry.kind === "emoji" && typeof entry.emoji === "string") {
+      const emoji = cleanAvatarEmoji(entry.emoji);
+      if (emoji === undefined || usesForeignUpload(uid, emoji)) throw new ApiError(400, AVATAR_EMOJI_ERROR);
+      if (emoji) result.push({ kind: "emoji", emoji });
+    }
+  }
+  return result;
+}

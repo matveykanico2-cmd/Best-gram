@@ -1,0 +1,35 @@
+// Блокировка аккаунта: заблокированный входит, но любой защищённый запрос отвечает
+// 403 { error: "banned", banReason, bannedUntil } — тогда приложение закрывает экран
+// блокировки (как api.js → showBanScreen в public/js). Повторный ответ только обновляет его.
+import { useSyncExternalStore } from "react";
+
+export type BanInfo = { bannedAt?: string | null; banReason: string | null; bannedUntil: string | null };
+
+let current: BanInfo | null = null;
+const listeners = new Set<() => void>();
+
+export function reportBanned(body: { bannedAt?: unknown; banReason?: unknown; bannedUntil?: unknown }) {
+  const next: BanInfo = {
+    bannedAt: typeof body.bannedAt === "string" ? body.bannedAt : null,
+    banReason: typeof body.banReason === "string" ? body.banReason : null,
+    bannedUntil: typeof body.bannedUntil === "string" ? body.bannedUntil : null,
+  };
+  if (current && current.bannedAt === next.bannedAt && current.banReason === next.banReason && current.bannedUntil === next.bannedUntil) return;
+  current = next;
+  listeners.forEach((l) => l());
+}
+
+/** Сбрасывает экран блокировки после переключения или добавления другого аккаунта. */
+export function clearBanned() {
+  if (!current) return;
+  current = null;
+  listeners.forEach((l) => l());
+}
+
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => void listeners.delete(l);
+};
+
+/** Аккаунт заблокирован — сведения для экрана блокировки; null — нет. */
+export const useBan = () => useSyncExternalStore(subscribe, () => current);

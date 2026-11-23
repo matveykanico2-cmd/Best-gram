@@ -1,0 +1,166 @@
+// Качество звонков. Раньше (public/js/lib/mediaQuality.js в main2) ПК просил 1080p/60,
+// 3,5 Мбит/с и стерео Opus 128 кбит/с — на деле это и давало «ужасное качество»: кодировать
+// 1080p/60 тяжело (браузер при перегрузке процессора сам режет разрешение до квадратов),
+// через TURN и слабый Wi-Fi столько не пролезает (оценка полосы стартует с сотен кбит/с —
+// кадр рассыпается и замирает), а стерео с эхоподавлением и DTX портит голос. Поэтому, как
+// в Meet/Telegram: камера 720p/30 на телефоне и до 1440p/30 на ПК, потолок
+// видео 8 Мбит/с на ПК и 2,5 Мбит/с на телефоне, degradationPreference «balanced»;
+// голос — моно Opus с FEC, без DTX, который может обрезать тихую речь.
+
+export const isMobileUa = (ua: string) => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+const IS_MOBILE = typeof navigator !== "undefined" && isMobileUa(navigator.userAgent);
+
+/** Параметры качества для телефона или ПК. */
+export function mediaQuality(mobile: boolean) {
+  return {
+    video: { width: { ideal: mobile ? 1280 : 2560 }, height: { ideal: mobile ? 720 : 1440 }, frameRate: { ideal: 30, max: 30 } } satisfies MediaTrackConstraints,
+    // Голос: моно с шумо- и эхоподавлением (стерео-захват на ПК ломал эхоподавление).
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: { ideal: 48_000 } } satisfies MediaTrackConstraints,
+    // Голос: Opus 24–48 кбит/с, моно, 48 кГц. FEC помогает при потерях пакетов.
+    opusBitrate: mobile ? 32_000 : 64_000,
+    // Видео: потолок выше, чтобы на хорошем канале не мылилось; balanced degradation
+    // плавно снижает качество при слабой сети вместо замираний.
+    videoBitrate: mobile ? 3_500_000 : 8_000_000,
+    videoFramerate: 30,
+  };
+}
+
+export type MediaQuality = ReturnType<typeof mediaQuality>;
+
+const QUALITY = mediaQuality(IS_MOBILE);
+
+export const HD_VIDEO: MediaTrackConstraints = QUALITY.video;
+export const CALL_AUDIO: MediaTrackConstraints = QUALITY.audio;
+
+// Экран — до 1440p (мелкий текст), 30 кадров; cursor и systemAudio знают не все браузеры (и не все типы DOM).
+export const HD_SCREEN = {
+  video: { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30, max: 30 }, cursor: "motion" },
+  audio: true,
+  systemAudio: "include",
+} as DisplayMediaStreamOptions;
+
+/** Потолок показа экрана: чёткость важнее кадров. */
+// Экран держит разрешение: для текста важнее пиксели, чем лишние кадры.
+export const SCREEN_BITRATE = 8_000_000;
+
+export const cameraConstraints = (extra: MediaTrackConstraints = {}): MediaTrackConstraints => ({ ...HD_VIDEO, ...extra });
+
+const OPUS_KEYS = /^(useinbandfec|usedtx|maxaveragebitrate|stereo|sprop-stereo)=/;
+const VP9_PT_RE = /a=rtpmap:(\d+) VP9\/90000/i;
+
+// Opus — это то, что мы готовы принимать: моно, защита от потерь (FEC), без DTX,
+// который может съедать начало тихих фраз, и с ограниченным битрейтом речи.
+export function tuneOpusSdp(desc: RTCSessionDescriptionInit, quality: MediaQuality = QUALITY): RTCSessionDescriptionInit {
+  if (!desc?.sdp) return desc;
+  const pt = /a=rtpmap:(\d+) opus\/48000/i.exec(desc.sdp)?.[1];
+  if (!pt) return desc;
+  const params = `useinbandfec=1;maxaveragebitrate=${quality.opusBitrate};stereo=0;sprop-stereo=0`;
+  let sdp = desc.sdp;
+  const fmtpRe = new RegExp(`a=fmtp:${pt} ([^\r\n]*)`);
+  if (fmtpRe.test(sdp)) {
+    sdp = sdp.replace(fmtpRe, (_, cur: string) => {
+      const kept = cur.split(";").filter((kv) => kv.trim() && !OPUS_KEYS.test(kv.trim()));
+      return `a=fmtp:${pt} ${[...kept, params].join(";")}`;
+    });
+  } else {
+    sdp = sdp.replace(new RegExp(`(a=rtpmap:${pt} opus/48000[^\r\n]*)`), `$1\r\na=fmtp:${pt} ${params}`);
+  }
+  // Предпочитаем VP9 — лучшее качество при низком битрейте, меньше артефактов на Mobile.
+  const vp9 = VP9_PT_RE.exec(sdp)?.[1];
+  if (vp9) {
+    const lines = sdp.split("\r\n");
+    const mLineIdx = lines.findIndex((l) => l.startsWith("m=video"));
+    if (mLineIdx >= 0) {
+      const mLine = lines[mLineIdx];
+      if (mLine) {
+        const parts = mLine.split(" ");
+        if (!parts.includes(vp9!)) {
+        parts.splice(3, 0, vp9!);
+        (lines[mLineIdx] as string) = parts.join(" ");
+        }
+        sdp = lines.join("\r\n");
+      }
+    }
+  }
+  return { type: desc.type, sdp };
+}
+
+type SendParams = RTCRtpSendParameters & { degradationPreference?: string };
+
+/**
+ * Потолок битрейта и кадров видеоотправителя. Кодировки появляются только после
+ * согласования (до него encodings пуст, а дописать свою нельзя — setParameters падает),
+ * поэтому звонок вызывает это и после setLocalDescription, и когда соединились.
+ * Возвращает true, если браузер принял настройки.
+ */
+export async function tuneVideoSender(sender: RTCRtpSender | null, { screen = false, quality = QUALITY }: { screen?: boolean; quality?: MediaQuality } = {}): Promise<boolean> {
+  if (!sender || sender.track?.kind !== "video" || typeof sender.getParameters !== "function") return false;
+  const apply = async (withPreference: boolean) => {
+    // setParameters принимает только свежий результат getParameters (transactionId).
+    const params = sender.getParameters() as SendParams;
+    const enc = params.encodings?.[0];
+    if (!enc) return false;
+    enc.maxBitrate = screen ? SCREEN_BITRATE : quality.videoBitrate;
+    enc.maxFramerate = screen ? 30 : quality.videoFramerate;
+    // Камера: balanced — при слабой сети плавно снижает и чёткость, и кадры;
+    // экран: держит разрешение (текст), теряет кадры.
+    if (withPreference) params.degradationPreference = screen ? "maintain-resolution" : "balanced";
+    await sender.setParameters(params);
+    return true;
+  };
+  try {
+    return await apply(true);
+  } catch {
+    // degradationPreference знают не все браузеры — хотя бы битрейт.
+    try {
+      return await apply(false);
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Подсказка кодеру: камера — движение (плавность), экран — детали (чёткий текст). */
+export function hintVideoTrack(track: MediaStreamTrack | null | undefined, hint: "motion" | "detail") {
+  if (track && "contentHint" in track) track.contentHint = hint;
+}
+
+export const hintScreenTrack = (track: MediaStreamTrack) => hintVideoTrack(track, "detail");
+
+const permissionDenied = (err: unknown) => /NotAllowed|Security|Permission/i.test((err as Error)?.name ?? "");
+
+/**
+ * getUserMedia с запасными вариантами, как getUserMediaSafe в public/js/lib/mediaQuality.js:
+ * камера не дала 720p/30 (OverconstrainedError, занята и т.п.) — просим 640×480/30, не вышло
+ * и это — камеру без требований к качеству (только выбор камеры). Запрет доступа не повторяем.
+ */
+export async function getUserMediaSafe(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  const gum = (c: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(c);
+  try {
+    return await gum(constraints);
+  } catch (firstErr) {
+    const video = constraints.video;
+    if (!video || permissionDenied(firstErr)) throw firstErr;
+    const { width, height, frameRate, ...pick } = video === true ? ({} as MediaTrackConstraints) : video;
+    const camera: MediaTrackConstraints = {};
+    if (pick.deviceId !== undefined) camera.deviceId = pick.deviceId;
+    if (pick.facingMode !== undefined) camera.facingMode = pick.facingMode;
+    const sd: MediaTrackConstraints = {
+      ...(width ? { width: { ideal: 640 } } : {}),
+      ...(height ? { height: { ideal: 480 } } : {}),
+      ...(frameRate ? { frameRate: { ideal: 30, max: 30 } } : {}),
+      ...camera,
+    };
+    let lastErr: unknown = firstErr;
+    const steps = JSON.stringify(sd) === JSON.stringify(camera) ? [camera] : [sd, camera];
+    for (const v of steps) {
+      try {
+        return await gum({ audio: constraints.audio, video: Object.keys(v).length ? v : true });
+      } catch (err) {
+        lastErr = err;
+        if (permissionDenied(err)) break;
+      }
+    }
+    throw lastErr;
+  }
+}

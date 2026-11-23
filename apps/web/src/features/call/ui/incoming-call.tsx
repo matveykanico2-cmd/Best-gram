@@ -1,0 +1,90 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate } from "react-router";
+
+import { errorText } from "@/shared/lib/error-text";
+import { stopRingtone } from "@/shared/lib/media/sounds";
+import { Avatar, Icon } from "@/shared/ui";
+
+import type { CallPeer } from "../api/call-api";
+import { decline, joinCallById } from "../model/call-store";
+import { useCall } from "../model/use-call";
+import { useIncomingCall } from "../model/use-incoming-call";
+
+import styles from "./incoming-call.module.css";
+
+/** Экран входящего звонка поверх приложения — «Отклонить» и «Ответить». */
+export function IncomingCall({ me }: { me: CallPeer }) {
+  const current = useCall();
+  const { ringing, dismiss, beginAnswer, finishAnswer } = useIncomingCall(me.id, current?.call.id);
+  const [answering, setAnswering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  // joinCallById creates the live call state before media permissions/ICE finish.
+  // Move to the call screen at that point; waiting for the whole join made the
+  // incoming card vanish while the user was still looking at the chat.
+  useEffect(() => {
+    if (answering && ringing && current?.call.id === ringing.id) void navigate(`/call/${ringing.id}`, { replace: true });
+  }, [answering, current?.call.id, navigate, ringing]);
+  // Ответили из уведомления (/call/:id?answer=1) — звонок уже идёт.
+  if (!ringing || current?.call.id === ringing.id) return null;
+  const other = ringing.otherUser;
+  const group = ringing.participantIds.length > 2;
+  const video = ringing.kind === "video";
+  const kind = group ? (video ? "Групповой видеозвонок" : "Групповой звонок") : video ? "Входящий видеозвонок" : "Входящий звонок";
+  const answer = async () => {
+    if (answering) return;
+    setAnswering(true);
+    setError(null);
+    beginAnswer(ringing.id);
+    stopRingtone();
+    try {
+      await joinCallById(ringing.id, me, { answer: true });
+      dismiss();
+      void navigate(`/call/${ringing.id}`);
+    } catch (err) {
+      setError(errorText(err, "Не удалось ответить. Попробуйте ещё раз"));
+    } finally {
+      finishAnswer(ringing.id);
+      setAnswering(false);
+    }
+  };
+  return createPortal(
+    <div className={styles.screen} role="dialog" aria-label={kind}>
+      <div className={styles.card}>
+        <p className={styles.kind}>{kind}</p>
+        <div className={styles.avatar}>
+          <Avatar size={132} name={other?.name ?? "?"} color={other?.avatarColor} image={other?.avatarImage} emoji={other?.avatarEmoji} />
+        </div>
+        <p className={styles.name}>{other?.name ?? "Звонок"}</p>
+        <p className={styles.hint}>{other?.username ? `@${other.username}` : "Звонит…"}</p>
+        {error ? <p role="alert">{error}</p> : null}
+        <div className={styles.actions}>
+          <div className={styles.action}>
+            <button
+              type="button"
+              className={`${styles.button} ${styles.decline}`}
+              title="Отклонить"
+              aria-label="Отклонить"
+              disabled={answering}
+              onClick={() => {
+                dismiss();
+                void decline(ringing);
+              }}
+            >
+              <Icon name="Phone" size={26} className={styles.hangupIcon} />
+            </button>
+            <span className={styles.label}>Отклонить</span>
+          </div>
+          <div className={styles.action}>
+            <button type="button" className={`${styles.button} ${styles.accept}`} title="Ответить" aria-label="Ответить" disabled={answering} onClick={() => void answer()}>
+              <Icon name={video ? "Video" : "Phone"} size={26} />
+            </button>
+            <span className={styles.label}>Ответить</span>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}

@@ -1,0 +1,269 @@
+import { randomBytes, randomInt } from "node:crypto";
+import { Injectable } from "@nestjs/common";
+import type { Request, Response } from "express";
+import { GUEST_MODE_ENABLED, PREMIUM_GRANT_DAYS, isAdminPhone } from "../../common/config/accounts.js";
+import { ApiError } from "../../common/errors/api-error.js";
+import { genId } from "../../common/lib/gen-id.js";
+import { hashPassword, passwordMatches } from "../../common/lib/password.js";
+import { EMAIL_RE, PHONE_RE, normalizeBirthday } from "../../common/lib/validators.js";
+import { checkUsername, deleteAccount, findOrCreateDm, sendMail, sendMessageAndBroadcast } from "../../legacy/legacy.js";
+import { SessionsRepository } from "../sessions/sessions.repository.js";
+import { UiLanguageService } from "../ui-language/ui-language.service.js";
+import { selfUser } from "../users/lib/user.presenter.js";
+import { isUsernameConflict } from "../users/lib/username.js";
+import type { User } from "../users/model/domain.js";
+import { UsersRepository } from "../users/users.repository.js";
+import type { ChangePasswordDto, EmailStartDto } from "./model/schemas/account.schema.js";
+import type { RegisterEmailDto } from "./model/schemas/login.schema.js";
+import { SessionCookiesService } from "./session-cookies.service.js";
+import { SignInService } from "./sign-in.service.js";
+import { AuthCodesStore } from "./stores/auth-codes.store.js";
+import { TwoFactorTicketsStore } from "./stores/two-factor-tickets.store.js";
+import { SystemNoticesService } from "./system-notices.service.js";
+
+const DELETION_DELAY_DAYS = 7;
+const GUEST_AVATAR_COLORS = ["#2E56D9", "#2E86AB", "#A23B72", "#F14668", "#008080", "#5B2C6F", "#1B998B", "#E76F51"];
+
+// Аккаунт: регистрация, пароль, почта, удаление.
+@Injectable()
+export class AccountService {
+  public constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly sessionsRepository: SessionsRepository,
+    private readonly sessionCookies: SessionCookiesService,
+    private readonly signIn: SignInService,
+    private readonly codes: AuthCodesStore,
+    private readonly tickets: TwoFactorTicketsStore,
+    private readonly notices: SystemNoticesService,
+    private readonly uiLanguage: UiLanguageService
+  ) {}
+
+  public async register(req: Request, res: Response, dto: RegisterEmailDto) {
+    // Почта и длина пароля проверены схемой. Имя, юзернейм и номер необязательны: без имени —
+    // первое слово из почты, без юзернейма — случайный «user_…» (не из почты: по нему адрес
+    // угадывался бы), без номера — пустой.
+    const { lastName: cleanLast, email, password, phone: normalizedPhone, referralCode, birthday } = dto;
+    const name = dto.name || nameFromEmail(email);
+    const fullName = [name, cleanLast].filter(Boolean).join(" ");
+    const handle = dto.username;
+    if (handle) {
+      const usernameProblem = await checkUsername(handle);
+      if (usernameProblem) throw new ApiError(usernameProblem.status, usernameProblem.error);
+    }
+    if (normalizedPhone && !PHONE_RE.test(normalizedPhone)) throw new ApiError(400, "Введите номер телефона в формате +79991234567");
+    if (this.usersRepository.findByEmail(email)) throw new ApiError(409, "Аккаунт с таким email уже существует");
+    if (normalizedPhone && this.usersRepository.findByPhone(normalizedPhone)) throw new ApiError(409, "Аккаунт с таким номером телефона уже существует");
+    // Номер не подтверждается, а админ определяется по номеру: регистрация на
+    // админский номер возможна, только если явно разрешена в окружении.
+    if (isAdminPhone(normalizedPhone) && process.env.ALLOW_ADMIN_PHONE_SIGNUP !== "1") {
+      throw new ApiError(409, "Аккаунт с таким номером телефона уже существует");
+    }
+
+    const birthdayIso = birthday ? normalizeBirthday(birthday) : null;
+    if (birthday && !birthdayIso) throw new ApiError(400, "Введите корректную дату рождения (ДД.ММ.ГГГГ)");
+
+    let referrer: User | undefined;
+    if (referralCode.trim()) {
+      referrer = this.usersRepository.findByReferralCode(referralCode);
+      if (!referrer) throw new ApiError(400, "Код друга не найден — проверьте и попробуйте снова");
+    }
+
+    const { hash, salt } = hashPassword(password);
+    const row = (username: string) => ({
+      id: genId("u"),
+      name: fullName,
+      username,
+      phone: normalizedPhone,
+      email: email.trim().toLowerCase(),
+      passwordHash: hash,
+      passwordSalt: salt,
+      avatarColor: "#2E56D9",
+      bio: "",
+      online: 1,
+      lastSeen: new Date().toISOString(),
+      referredBy: referrer?.id ?? null,
+      premiumUntil: referrer ? new Date(Date.now() + PREMIUM_GRANT_DAYS * 86400000).toISOString() : null,
+      birthday: birthdayIso,
+    });
+    // Свой юзернейм — одна попытка; придуманный — до пяти: проверка и запись не атомарны, и
+    // одновременная регистрация могла успеть занять тот же.
+    let user: User | undefined;
+    for (let attempt = 0; !user; attempt++) {
+      try {
+        user = this.usersRepository.create(row(handle || (await randomFreeUsername())));
+      } catch (err) {
+        if (!isUsernameConflict(err)) throw err;
+        if (handle || attempt >= 4) throw new ApiError(409, "Этот юзернейм уже занят");
+      }
+    }
+
+    if (cleanLast) user = this.usersRepository.update(user.id, { lastName: cleanLast })!;
+
+    if (referrer) {
+      this.usersRepository.grantPremiumDays(referrer.id, PREMIUM_GRANT_DAYS);
+      await this.notifyReferralBonus(referrer.id, user);
+    }
+
+    // Язык интерфейса — по стране IP (или языку браузера), пока пользователь не выберет сам.
+    await this.uiLanguage.applyForNewUser(user.id, req);
+    this.sessionCookies.addAccount(req, res, user.id);
+    await this.signIn.recordSession(req, res, user.id);
+    return { user: selfUser(user) };
+  }
+
+  /** Гость — аккаунт без телефона, почты и пароля (createGuestUser в server/data/users.js). */
+  public async guest(req: Request, res: Response, name = "") {
+    if (!GUEST_MODE_ENABLED) throw new ApiError(404, "Гостевой режим отключён");
+    let username = "";
+    for (let i = 0; i < 5 && !username; i++) {
+      const candidate = `guest_${randomBytes(5).toString("hex")}`;
+      if (!(await checkUsername(candidate))) username = candidate;
+    }
+    const user = this.usersRepository.create({
+      id: genId("u"),
+      name: name || `Гость ${randomInt(1000, 10000)}`,
+      username,
+      phone: "",
+      email: null,
+      avatarColor: GUEST_AVATAR_COLORS[randomInt(GUEST_AVATAR_COLORS.length)],
+      bio: "",
+      online: 1,
+      lastSeen: new Date().toISOString(),
+      isGuest: 1,
+    });
+    await this.uiLanguage.applyForNewUser(user.id, req);
+    return this.signIn.finishLogin(req, res, user);
+  }
+
+  public async usernameAvailable(handle: string) {
+    const problem = await checkUsername(handle);
+    return { username: handle, available: !problem, error: problem?.error ?? null };
+  }
+
+  public verifyPassword(userId: string, password: string): void {
+    const user = this.usersRepository.findById(userId);
+    if (!passwordMatches(password, user?.passwordHash, user?.passwordSalt)) throw new ApiError(401, "Неверный пароль");
+  }
+
+  public async deleteAccount(req: Request, res: Response, userId: string, password: string) {
+    this.verifyPassword(userId, password);
+    await deleteAccount(userId);
+    // Если на устройстве есть другие аккаунты — переключаемся на следующий.
+    const remaining = this.sessionCookies.removeAccount(req, res, userId);
+    return { ok: true, remaining };
+  }
+
+  public async changePassword(req: Request, res: Response, userId: string, { currentPassword, newPassword }: ChangePasswordDto): Promise<void> {
+    const user = this.usersRepository.findById(userId);
+    if (!passwordMatches(currentPassword, user?.passwordHash, user?.passwordSalt)) throw new ApiError(401, "Неверный текущий пароль");
+    if (newPassword.length < 6) throw new ApiError(400, "Новый пароль — не короче 6 символов");
+    if (newPassword === currentPassword) throw new ApiError(400, "Новый пароль совпадает со старым");
+
+    const { hash, salt } = hashPassword(newPassword);
+    this.usersRepository.update(userId, { passwordHash: hash, passwordSalt: salt });
+    this.sessionsRepository.revokeOthers(userId, this.sessionCookies.getOrCreateDeviceId(req, res));
+    await this.notices.notify(
+      userId,
+      "🔐 Пароль изменён. Все остальные сеансы завершены.\n\nЕсли это были не вы — восстановите доступ и включите двухфакторную аутентификацию: Настройки → Конфиденциальность.",
+      "password change notice"
+    );
+  }
+
+  public async startEmailChange(userId: string, dto: EmailStartDto) {
+    const user = this.usersRepository.findById(userId);
+    const { email } = dto;
+    // Гостевой аккаунт изначально не имеет пароля: подтверждением новой почты служит
+    // одноразовый код на сам адрес. Для обычного аккаунта пароль по-прежнему обязателен.
+    if (user?.passwordHash && user.passwordSalt && !passwordMatches(dto.password, user.passwordHash, user.passwordSalt)) {
+      throw new ApiError(401, "Неверный пароль");
+    }
+    if (!EMAIL_RE.test(email)) throw new ApiError(400, "Введите корректный адрес почты");
+    if (email === (user?.email ?? "").toLowerCase()) throw new ApiError(400, "Это уже ваш адрес");
+
+    const taken = this.usersRepository.findByEmail(email);
+    if (taken && taken.id !== userId) throw new ApiError(409, "Этот адрес уже привязан к другому аккаунту");
+
+    // Адрес меняется только после кода из письма на него: на почту приходит
+    // восстановление доступа, опечатка или чужой адрес отдали бы аккаунт.
+    const code = this.codes.emailChange.start(userId, email);
+    const mail = await sendMail({
+      to: email,
+      subject: "Подтвердите адрес почты в Nexora",
+      text:
+        `Код для привязки этого адреса к аккаунту Nexora: ${code}\n\nНикому не сообщайте его — даже сотрудникам Nexora. Действует 15 минут.\n\n` +
+        `Если вы не меняли адрес почты — просто проигнорируйте письмо.`,
+    }).catch((err: Error) => ({ delivered: false, reason: err.message }));
+    if (!mail.delivered) throw new ApiError(502, "Не удалось отправить письмо на этот адрес — проверьте его и попробуйте ещё раз");
+    return { ok: true, sent: true, email };
+  }
+
+  public async confirmEmailChange(userId: string, code: string) {
+    const email = this.codes.emailChange.confirm(userId, code);
+    if (!email) throw new ApiError(400, "Неверный или устаревший код");
+    // За время ожидания кода адрес мог занять кто-то другой.
+    const taken = this.usersRepository.findByEmail(email);
+    if (taken && taken.id !== userId) throw new ApiError(409, "Этот адрес уже привязан к другому аккаунту");
+
+    const updated = this.usersRepository.update(userId, { email })!;
+    await this.notices.notify(userId, `📧 Адрес почты изменён на ${email}.\n\nЕсли это были не вы — немедленно смените пароль.`, "email change notice");
+    return { user: selfUser(updated), changed: true };
+  }
+
+  // Удаление через неделю — со второго шага входа, когда второй фактор потерян.
+  public async scheduleDeletion(ticket: string | undefined) {
+    const entry = this.tickets.peek(ticket);
+    if (!entry) throw new ApiError(400, "Время на подтверждение истекло — войдите заново");
+    const user = this.usersRepository.findById(entry.userId);
+    if (!user) throw new ApiError(400, "Аккаунт не найден");
+
+    const deleteAt = new Date(Date.now() + DELETION_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    this.usersRepository.scheduleDeletion(user.id, deleteAt);
+    this.tickets.consume(ticket);
+    const when = new Date(deleteAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+    await this.notices.notify(
+      user.id,
+      `⚠️ Запрошено удаление аккаунта — он будет удалён ${when}. Если передумаете, просто войдите в аккаунт до этой даты — удаление отменится.`,
+      "deletion notice"
+    );
+    return { deleteAt };
+  }
+
+  public async cancelDeletion(ticket: string | undefined) {
+    const entry = this.tickets.peek(ticket);
+    if (!entry) throw new ApiError(400, "Время на подтверждение истекло — войдите заново");
+    const user = this.usersRepository.findById(entry.userId);
+    if (!user) throw new ApiError(400, "Аккаунт не найден");
+
+    this.usersRepository.cancelDeletion(user.id);
+    await this.notices.notify(user.id, "✅ Удаление аккаунта отменено.", "deletion cancel notice");
+    return { ok: true };
+  }
+
+  private async notifyReferralBonus(referrerId: string, newUser: User): Promise<void> {
+    try {
+      const chat = await findOrCreateDm(referrerId, newUser.id);
+      await sendMessageAndBroadcast(
+        chat,
+        newUser.id,
+        `🎉 Я зарегистрировался(ась) в Nexora по вашему коду приглашения! Нам обоим начислен Nexora Premium.`
+      );
+    } catch (err) {
+      console.error("referral notification failed:", err);
+    }
+  }
+}
+
+/** Имя до второго шага регистрации: первое слово из почты («ivan.petrov@…» → «Ivan»), без цифр. */
+function nameFromEmail(email: string): string {
+  const word = (email.split("@")[0] ?? "").split(/[^\p{L}]+/u).find((w) => w.length >= 2) ?? "";
+  return word ? (word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).slice(0, 64) : "Пользователь";
+}
+
+/** Свободный случайный юзернейм «user_…»: не из почты, чтобы по нему нельзя было угадать адрес. */
+async function randomFreeUsername(): Promise<string> {
+  for (let i = 0; i < 10; i++) {
+    const candidate = `user_${randomBytes(4).toString("hex")}`;
+    if (!(await checkUsername(candidate))) return candidate;
+  }
+  return `user_${randomBytes(6).toString("hex")}`;
+}

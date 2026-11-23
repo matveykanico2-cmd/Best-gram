@@ -1,0 +1,95 @@
+// Иконка приложения, как public/js/lib/appIcons.js: стандартная («Морская») и варианты, часть —
+// с Premium. Выбор — только на этом устройстве (значок вкладки, заставка, значок на рабочем
+// столе в приложениях): раньше он хранился и в аккаунте, и смена иконки на телефоне меняла её
+// на компьютере и в остальных приложениях.
+import { APP_ICONS, type AppIcon, appIconSvg, DEFAULT_APP_ICON, findAppIcon } from "./app-icons-catalog";
+
+export { APP_ICONS, type AppIcon, appIconSvg, DEFAULT_APP_ICON, findAppIcon };
+
+const STORE_KEY = "nexora.appIcon";
+// Готовая разметка заставки для index.html: там она нужна до загрузки модулей.
+const SPLASH_KEY = "nexora.appIcon.splash";
+
+
+export function getAppIconId() {
+  try {
+    const id = localStorage.getItem(STORE_KEY);
+    if (id && APP_ICONS.some((i) => i.id === id)) return id;
+  } catch {
+    // Хранилище недоступно — стандартная.
+  }
+  return DEFAULT_APP_ICON;
+}
+
+export const canUseAppIcon = (id: string, user: { isPremium?: boolean } | null | undefined) => !findAppIcon(id).premium || !!user?.isPremium;
+
+// Значок вкладки: вместо стандартных (svg, 16, 32) — один PNG выбранной иконки.
+function applyFavicon(id: string) {
+  const head = document.head;
+  for (const link of head.querySelectorAll('link[rel="icon"]')) link.remove();
+  const icon = document.createElement("link");
+  icon.rel = "icon";
+  icon.type = "image/png";
+  icon.sizes = "32x32";
+  icon.id = "nexora-favicon";
+  icon.href = `/icons/app/${id}-32.png`;
+  head.appendChild(icon);
+  const touch = head.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+  if (touch) touch.href = `/icons/app/${id}-180.png`;
+}
+
+type IconWindow = Window & {
+  Capacitor?: { isNativePlatform?: () => boolean; Plugins?: { AppIcon?: { set: (o: { name: string }) => Promise<void> } } };
+  nexoraDesktop?: { setIcon?: (id: string) => Promise<void> };
+};
+const win = () => window as IconWindow;
+const nativeAppIcon = () => (win().Capacitor?.isNativePlatform?.() ? (win().Capacitor?.Plugins?.AppIcon ?? null) : null);
+
+/** Где иконку на рабочем столе можно сменить из приложения. */
+export const appIconScope = () => (nativeAppIcon() || win().nexoraDesktop?.setIcon ? "native" : "web");
+
+/** Сменить иконку на этом устройстве. Ошибку нативной части пробрасываем — настройки покажут её. */
+export async function setAppIcon(id: string) {
+  const icon = findAppIcon(id);
+  try {
+    localStorage.setItem(STORE_KEY, icon.id);
+    if (icon.id === DEFAULT_APP_ICON) localStorage.removeItem(SPLASH_KEY);
+    else localStorage.setItem(SPLASH_KEY, appIconSvg(icon));
+  } catch {
+    // Хранилище недоступно — выбор действует до перезапуска.
+  }
+  applyFavicon(icon.id);
+  const native = nativeAppIcon();
+  if (native) await native.set({ name: icon.id });
+  else await win().nexoraDesktop?.setIcon?.(icon.id);
+}
+
+/**
+ * При запуске: значок вкладки — по выбору, а Premium-иконка без Premium возвращается к
+ * стандартной (подписка закончилась).
+ */
+export function syncAppIcon(user: { isPremium?: boolean }) {
+  const id = getAppIconId();
+  if (!canUseAppIcon(id, user)) return void setAppIcon(DEFAULT_APP_ICON).catch(() => {});
+  if (id !== DEFAULT_APP_ICON) applyFavicon(id);
+}
+
+let pulseTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Значок вкладки мигает при новом сообщении (pulseFavicon): видно, даже когда вкладка в фоне. */
+export function pulseFavicon(durationMs = 3000) {
+  const favicon = document.getElementById("nexora-favicon");
+  if (!favicon) return;
+  // Сам <link> анимировать нельзя — вкладка мигает сменой значка: пустой и обратно.
+  clearTimeout(pulseTimer);
+  const href = `/icons/app/${getAppIconId()}-32.png`;
+  let on = false;
+  const blink = setInterval(() => {
+    on = !on;
+    favicon.setAttribute("href", on ? "data:," : href);
+  }, 400);
+  pulseTimer = setTimeout(() => {
+    clearInterval(blink);
+    favicon.setAttribute("href", href);
+  }, durationMs);
+}

@@ -1,0 +1,838 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type CSSProperties, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+
+import { useStartCall } from "@/features/call";
+import { ProfileQrDialog } from "@/features/profile-qr";
+import { openStickerPack, openStickerPreview, packSticker, stickerPackQueries } from "@/features/send-message";
+
+import { ChatPickerDialog, chatQueries, openDm, useChats } from "@/entities/chat";
+import { GiftArt, openGiftShop, type ReceivedGift } from "@/entities/gift";
+import { internalRoute, MessageLinks, MessageText } from "@/entities/message";
+import { ReportDialog } from "@/entities/report";
+import { SafetyBadge, useSafetyLabel } from "@/entities/safety-label";
+import { isServerModerator, type SelfUser, sessionQueries } from "@/entities/session";
+import { hasUnseen, openStoryViewer, storyQueries, storyWord } from "@/entities/story";
+import { bannerBackground, birthdayText, closeUserProfile, isBirthdayToday, PremiumStar, ProfileStatusBadge, ProfileTrackCard, type StatusBadgeItem, type UserProfile, userQueries } from "@/entities/user";
+
+import { useWsEvent } from "@/shared/api";
+import { internalAdRoute } from "@/shared/lib/ad-link";
+import { copyText } from "@/shared/lib/clipboard";
+import { errorText } from "@/shared/lib/error-text";
+import { lazyView } from "@/shared/lib/lazy-view";
+import { plural, statusLabel } from "@/shared/lib/presence";
+import { publicUrl } from "@/shared/lib/public-link";
+import { askConfirm, askText, Avatar, Dialog, EmojiText, Icon, type IconName, InfoRow, openExternally, openInAppBrowser, toast } from "@/shared/ui";
+
+import { type ChannelCard, profileApi, profileQueries, type SharedMedia } from "../api/profile-api";
+import { isTabId, type TabId,TABS } from "../lib/tabs";
+
+import { AvatarViewer } from "./avatar-viewer";
+import { BusinessHoursRow } from "./business-hours-row";
+import { EditContactDialog } from "./edit-contact-dialog";
+import { PinnedChannelsDialog } from "./pinned-channels-dialog";
+import { ProfileTabContent } from "./profile-tabs";
+import styles from "./user-profile.module.css";
+
+type Props = { userId: string; me: SelfUser };
+type Overlay = "avatars" | "qr" | "share" | "report" | "channels" | "admin" | "edit-contact" | null;
+
+// Карточка модератора — отдельным чанком: она нужна только админам.
+const AdminUserCard = lazyView(() => import("@/features/admin").then((m) => m.UserCard));
+type ProfileUser = UserProfile["user"] & { inContacts?: true; mutualContact?: true; profileName?: string; profileAvatarImage?: string | null; profileAvatarEmoji?: string | null };
+
+/**
+ * Профиль человека — панель справа поверх всего, как openProfileDialog в
+ * public/js/components/profileDialog.js: аватары, статус, быстрые действия, сведения,
+ * музыка, часы работы, реклама, действия с контактом, каналы, истории и вкладки.
+ */
+export function UserProfilePanel({ userId, me }: Props) {
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const profile = useQuery(userQueries.profile(userId));
+  const chats = useChats().data;
+  // Медиа из переписки сервер собирает по всей истории — профиль его не ждёт.
+  const shared = useQuery({ ...profileQueries.sharedMedia(userId), enabled: userId !== me.id });
+  const stories = useQuery(storyQueries.ofUser(userId)).data?.group ?? null;
+  const ad = useQuery(profileQueries.ad(userId)).data ?? null;
+  const startCall = useStartCall(me);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [showDotsMenu, setShowDotsMenu] = useState(false);
+  const [tab, setTab] = useState<TabId>("media");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const defaultTabApplied = useRef<string | null>(null);
+  const dotsMenuRef = useRef<HTMLDivElement>(null);
+  const openStatusPack = (item: StatusBadgeItem) => {
+    if (!item.packId) return;
+    void client.fetchQuery(stickerPackQueries.get(item.packId)).then((pack) => {
+      const sticker = pack.stickers.find((candidate) => candidate.url === item.image);
+      if (sticker) openStickerPack(pack, packSticker(sticker));
+      else openStickerPreview({ kind: "image", url: item.image, name: item.name, emoji: item.name });
+    }).catch(() => openStickerPreview({ kind: "image", url: item.image, name: item.name, emoji: item.name }));
+  };
+
+  const close = closeUserProfile;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Поверх профиля открыто диалоговое окно — Escape закрывает его, а не профиль.
+      if (document.querySelector('[role="dialog"]')) return;
+      if (showDotsMenu) {
+        setShowDotsMenu(false);
+      } else {
+        close();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showDotsMenu, close]);
+
+  // Удалили сообщение в чате — оно пропадает из «Медиа», «Голосовых», «Файлов», «Ссылок».
+  useWsEvent("message:deleted", (e) => {
+    const data = client.getQueryData(profileQueries.sharedMedia(userId).queryKey) as SharedMedia | undefined;
+    if (!data || data.chatId !== e.chatId) return;
+    const keep = <T extends { messageId: string }>(list: T[]) => list.filter((x) => x.messageId !== e.id);
+    client.setQueryData(profileQueries.sharedMedia(userId).queryKey, {
+      ...data,
+      media: keep(data.media),
+      files: keep(data.files),
+      links: keep(data.links),
+      voice: keep(data.voice),
+    } satisfies SharedMedia);
+  });
+
+  // Удаление отдельных фото/видео приходит как message:updated. Профиль не
+  // должен оставлять старую плитку до следующего открытия или перезагрузки.
+  useWsEvent("message:updated", (e) => {
+    const data = client.getQueryData(profileQueries.sharedMedia(userId).queryKey) as SharedMedia | undefined;
+    if (!data || data.chatId !== e.chatId || !e.message) return;
+    const id = e.message.id;
+    const has = (list: Array<{ messageId: string }>) => list.some((item) => item.messageId === id);
+    if (!has(data.media) && !has(data.files) && !has(data.links) && !has(data.voice)) return;
+    // Состав вложений и linkPreview мог измениться — надёжнее получить
+    // компактный актуальный список с сервера, чем оставлять stale-плитки.
+    void client.invalidateQueries({ queryKey: profileQueries.sharedMedia(userId).queryKey });
+  });
+
+  const isSelf = userId === me.id;
+  const known = chats?.find((c) => c.otherUser?.id === userId)?.otherUser ?? (isSelf ? me : null);
+  const data = profile.data;
+  const u = data?.user as ProfileUser | undefined;
+  const safety = useSafetyLabel(u?.safetyLabel);
+
+  useEffect(() => {
+    if (!u || defaultTabApplied.current === userId) return;
+    defaultTabApplied.current = userId;
+    setTab(isTabId(u.profileDefaultTab) ? u.profileDefaultTab : "media");
+  }, [u, userId]);
+
+  const patchProfile = (patch: Partial<UserProfile> | ((p: UserProfile) => Partial<UserProfile>)) =>
+    client.setQueryData(userQueries.profile(userId).queryKey, (p) => (p ? ({ ...p, ...(typeof patch === "function" ? patch(p) : patch) } as UserProfile) : p));
+
+  if (!data || !u) {
+    return (
+      <Shell onClose={close}>
+        {profile.isError ? (
+          <p className={styles.error}>{errorText(profile.error, "Не удалось загрузить профиль")}</p>
+        ) : known ? (
+          // Пока профиль грузится — сразу аватар и имя, если человек уже известен (из списка чатов).
+          <>
+            <div className={styles.avatarRow}>
+              <Avatar size={88} name={known.name} color={known.avatarColor} image={known.avatarImage} emoji={known.avatarEmoji} />
+            </div>
+            <p className={styles.name} translate="no">{known.name}</p>
+          </>
+        ) : (
+          <div className={styles.spinner} />
+        )}
+      </Shell>
+    );
+  }
+
+  const blocked = me.blockedUserIds.includes(userId);
+  const inContacts = data.inContacts;
+  const giftsCount = Array.isArray(u.giftsReceived) ? u.giftsReceived.length : 0;
+  const pinnedGifts = (Array.isArray(u.giftsReceived) ? (u.giftsReceived as ReceivedGift[]) : []).filter((gift) => gift.pinned && !gift.custom).slice(0, 4);
+  const sharedData = shared.data ?? null;
+  const has: Record<TabId, boolean> = {
+    posts: true,
+    // Пока медиа грузится, вкладка видна с «Загрузка…» — чтобы она не перескакивала.
+    media: (sharedData?.media.length ?? 0) > 0 || (shared.isPending && !isSelf),
+    gifts: giftsCount > 0,
+    files: (sharedData?.files.length ?? 0) > 0,
+    links: (sharedData?.links.length ?? 0) > 0,
+    voice: (sharedData?.voice.length ?? 0) > 0,
+    groups: data.commonGroupsCount > 0,
+  };
+  const tabs = TABS.filter((t) => has[t.id]);
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? "posts");
+
+  const status =
+    u.isBot && typeof u.botUserCount === "number"
+      ? `бот · ${u.botUserCount.toLocaleString("ru-RU")} ${plural(u.botUserCount, "пользователь", "пользователя", "пользователей")}`
+      : statusLabel(u);
+  const banner = bannerBackground(u.profileBanner);
+  const avatarCount = Array.isArray(u.avatarImages) ? u.avatarImages.length : 0;
+  const tracks = u.profileTracks?.length ? u.profileTracks : u.profileTrack ? [u.profileTrack] : [];
+  const profileLink = () => publicUrl(`/u/${String(u.username ?? "").replace(/^@/, "")}`);
+
+  const startChat = async () => {
+    try {
+      const { chat } = await openDm(userId, u.name, u.avatarColor);
+      if (!chats?.some((c) => c.id === chat.id)) await client.refetchQueries({ queryKey: chatQueries.list().queryKey }).catch(() => {});
+      close();
+      void navigate(`/chat/${chat.id}`);
+    } catch (err) {
+      toast(errorText(err, "Не удалось открыть чат"), { error: true });
+    }
+  };
+
+  const call = async (kind: "audio" | "video") => {
+    try {
+      const { chat } = await openDm(userId, u.name, u.avatarColor);
+      close();
+      await startCall.call(chat.id, kind);
+    } catch (err) {
+      toast(errorText(err, "Не удалось позвонить"), { error: true });
+    }
+  };
+
+  const startSecretChat = async () => {
+    const ok = await askConfirm(
+      `Начать секретный чат с ${u.name}?\n\nСообщения шифруются отдельным ключом этого чата, их нельзя переслать или скопировать. Чат будет доступен только на этом устройстве.`,
+      { okLabel: "Начать" }
+    );
+    if (!ok) return;
+    try {
+      const { chat } = await profileApi.startSecretChat(userId);
+      await client.refetchQueries({ queryKey: chatQueries.list().queryKey }).catch(() => {});
+      close();
+      void navigate(`/chat/${chat.id}`);
+    } catch (err) {
+      toast(errorText(err, "Не удалось начать секретный чат"), { error: true });
+    }
+  };
+
+  const toggleBlock = async () => {
+    const next = !blocked;
+    try {
+      await profileApi.setBlocked(userId, next);
+    } catch (err) {
+      toast(errorText(err, "Не удалось изменить блокировку"), { error: true });
+      return;
+    }
+    client.setQueryData(sessionQueries.current().queryKey, (s) => {
+      if (!s?.user) return s;
+      const ids = s.user.blockedUserIds.filter((id) => id !== userId);
+      return { ...s, user: { ...s.user, blockedUserIds: next ? [...ids, userId] : ids } };
+    });
+  };
+
+  const toggleContact = async () => {
+    if (inContacts && !(await askConfirm(`Удалить ${u.name} из контактов?`))) return;
+    try {
+      if (inContacts) await profileApi.removeContact(userId);
+      else {
+        // Добавление не должно прерываться отдельным диалогом о номере телефона.
+        // Номер не открываем автоматически; его можно будет разрешить отдельно.
+        await profileApi.addContact(userId, false);
+      }
+      patchProfile({ inContacts: !inContacts });
+      // После добавления сразу даём настроить локальные имя/фамилию, заметку и
+      // аватар либо предложить человеку новый — не прячем это во втором заходе в меню.
+      if (!inContacts) setOverlay("edit-contact");
+      void client.invalidateQueries({ queryKey: userQueries.contacts().queryKey });
+      void client.invalidateQueries({ queryKey: userQueries.profile(userId).queryKey });
+    } catch (err) {
+      toast(errorText(err, "Не удалось изменить контакт"), { error: true });
+    }
+  };
+
+  const editNote = async () => {
+    const next = await askText("Заметка о контакте — её видите только вы. Пусто — удалить.", { initial: data.contactNote ?? "" });
+    if (next === null) return;
+    try {
+      const res = await profileApi.setNote(userId, next);
+      patchProfile({ contactNote: res.note ?? null });
+    } catch (err) {
+      toast(errorText(err, "Не удалось сохранить заметку"), { error: true });
+    }
+  };
+
+  // Нет смысла слать человеку его же контакт в его же личный чат.
+  const selfDm = (chats ?? []).filter((c) => c.type === "dm" && !c.secret && c.otherUser?.id === userId).map((c) => c.id);
+  const shareContact = () => {
+    if (!(chats ?? []).some((c) => (!c.archived || c.isSaved) && !c.secret && !selfDm.includes(c.id))) {
+      toast(`Некому отправить контакт — вы не переписываетесь с ${u.name}`);
+      return;
+    }
+    setOverlay("share");
+  };
+
+  // Не подписан — /chat/<id> ответил бы «Чат не найден»: открываем превью канала по нику.
+  const openChannel = (channel: ChannelCard) => {
+    close();
+    const member = chats?.some((c) => c.id === channel.id);
+    void navigate(!member && channel.username ? `/@${channel.username}` : `/chat/${channel.id}`);
+  };
+
+  const openAd = async () => {
+    if (!ad) return;
+    close();
+    await profileApi.clickAd(ad.id).catch(() => {});
+    if (!ad.url) return;
+    if (ad.url.startsWith("/")) void navigate(ad.url);
+    else if (/^https?:\/\//i.test(ad.url)) openExternally(ad.url);
+  };
+
+  const showTabs = () => tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  return (
+    <>
+    <Shell
+      onClose={close}
+      onMore={() => setShowDotsMenu(true)}
+      fab={
+        u && !isSelf && !u.isBot ? (
+          <button type="button" className={styles.profileFab} title="Написать" aria-label="Написать" onClick={() => void startChat()}>
+            <Icon name="Edit" size={20} />
+          </button>
+        ) : null
+      }
+    >
+      <div className={banner ? `${styles.avatarRow} ${styles.withBanner}` : styles.avatarRow} style={banner ? ({ "--profile-banner": banner } as CSSProperties) : undefined}>
+        <button
+          type="button"
+          className={styles.avatarButton}
+          title="Открыть аватар"
+          aria-label="Открыть фото"
+          onClick={() => setOverlay("avatars")}
+        >
+          <Avatar size={128} name={u.name} color={u.avatarColor} image={u.avatarImage} emoji={u.avatarEmoji} online={u.online} />
+          {pinnedGifts.length ? (
+            <span className={styles.avatarGifts} aria-label="Закреплённые подарки">
+              {pinnedGifts.map((gift, index) => (
+                <span key={gift.id} className={styles.avatarGift} data-slot={index} title={`Закреплённый подарок: ${gift.name}`}>
+                  <GiftArt gift={gift} size={30} replay />
+                </span>
+              ))}
+            </span>
+          ) : null}
+          {avatarCount > 1 ? <span className={styles.avatarCount}>{avatarCount}</span> : null}
+        </button>
+      </div>
+      {isSelf ? <p className={styles.selfHint}>Так ваш профиль видят те, кому это разрешает приватность</p> : null}
+      <p className={styles.name} translate="no">
+        <EmojiText text={u.name || "Без имени"} />
+        {pinnedGifts.slice(0, 2).map((gift, index) => (
+          <span key={`name-${gift.id}`} className={styles.nameGift} title={`Закреплённый подарок: ${gift.name}`} data-slot={index}>
+            <GiftArt gift={gift} size={22} replay />
+          </span>
+        ))}
+        {u.isVerified ? (
+          <span className={styles.badge} title="Подтверждённый аккаунт">
+            <Icon name="Verified" size={17} />
+          </span>
+        ) : null}
+        {u.isDeveloper ? (
+          <span className={styles.badge} title="Разработчик Nexora">
+            <Icon name="Code" size={16} />
+          </span>
+        ) : null}
+        {u.isPremium ? <PremiumStar size={19} /> : null}
+        <ProfileStatusBadge user={{ statusIcon: u.statusIcon, statusName: u.statusName, statusItems: u.statusItems, name: u.name }} size={18} onOpenPack={openStatusPack} />
+        {u.safetyLabel ? <SafetyBadge label={u.safetyLabel} /> : null}
+      </p>
+      <p className={u.online ? `${styles.status} ${styles.online}` : styles.status}>{status ?? "был(а) недавно"}</p>
+      {/* Имя уже показано так, как вы записали человека; его собственное — подсказкой. */}
+      {u.profileName ? <p className={styles.contactName}>Имя в профиле: {u.profileName}</p> : null}
+      {u.mutualContact ? <p className={styles.contactName}>⇄ Взаимный контакт</p> : null}
+      {safety ? (
+        <div className={styles.warning}>
+          <Icon name="Info" size={15} />
+          <div>
+            <p className={styles.warningTitle}>{safety.label}</p>
+            <p className={styles.warningHint}>{safety.hint}</p>
+          </div>
+        </div>
+      ) : null}
+      {u.isBanned ? <p className={styles.banned}>🚫 Аккаунт заблокирован администрацией Nexora</p> : null}
+
+      <div className={styles.quickActions}>
+        <QuickAction icon={isSelf ? "Bookmark" : "MessageSquare"} label={isSelf ? "Избранное" : "Написать"} onClick={() => void startChat()} />
+        {!isSelf && !u.isBot && !blocked ? <QuickAction icon="Phone" label="Позвонить" onClick={() => void call("audio")} /> : null}
+        {!isSelf && !u.isBot ? <QuickAction icon="Lock" label={blocked ? "Разблокировать" : "Заблокировать"} onClick={() => void toggleBlock()} /> : null}
+        {!isSelf && !u.isBot ? (
+          <QuickAction
+            icon="Mic"
+            label="Аудио"
+            onClick={() => {
+              if (!has.voice) return toast("В переписке пока нет аудио");
+              setTab("voice");
+              showTabs();
+            }}
+          />
+        ) : null}
+        {isSelf ? (
+          <QuickAction
+            icon="Edit"
+            label="Изменить"
+            onClick={() => {
+              close();
+              void navigate("/settings/profile");
+            }}
+          />
+        ) : null}
+      </div>
+
+      <div className={styles.infoCard}>
+        {u.phone ? <InfoRow icon="Phone" value={u.phone} label="Телефон" copy={u.phone} /> : null}
+        <ProfileUsernameInfo user={u} />
+        {u.bio ? <InfoRow icon="Info" value={<ProfileLinks text={u.bio} onOpen={close} />} label={u.isBot ? "Описание" : "О себе"} multiline /> : null}
+        {inContacts && !isSelf ? (
+          <InfoRow icon="Edit" value={data.contactNote || "Добавить заметку"} label="Заметка · видите только вы" accent={!data.contactNote} multiline={!!data.contactNote} onClick={() => void editNote()} />
+        ) : null}
+        {u.birthday ? (
+          <InfoRow icon="Gift" value={isBirthdayToday(u.birthday) ? `🎉 Сегодня день рождения · ${birthdayText(u.birthday)}` : birthdayText(u.birthday)} label="День рождения" />
+        ) : null}
+        {data.commonGroupsCount > 0 ? (
+          <InfoRow
+            icon="Users"
+            value={`${data.commonGroupsCount} ${plural(data.commonGroupsCount, "общая группа", "общие группы", "общих групп")}`}
+            label="Общие группы"
+            onClick={() => {
+              setTab("groups");
+              showTabs();
+            }}
+          />
+        ) : null}
+      </div>
+
+      {u.profileLinks?.length ? <ProfileButtons links={u.profileLinks} onOpen={close} /> : null}
+
+      {tracks.length ? (
+        <div className={styles.trackSlot}>
+          <ProfileTrackCard tracks={tracks} />
+        </div>
+      ) : null}
+
+      {u.businessHours || (u.isBusiness && u.businessAddress) ? (
+        <div className={styles.infoCard}>
+          {u.businessHours ? <BusinessHoursRow hours={u.businessHours} /> : null}
+          {u.isBusiness && u.businessAddress ? <BusinessLocation user={u} /> : null}
+        </div>
+      ) : null}
+
+      {u.isAdsActive && u.adText ? (
+        <div className={styles.ad}>
+          <span className={styles.adLabel}>Реклама</span>
+          <p className={styles.adText}>{u.adText}</p>
+          {u.adUrl ? (
+            <a
+              className={styles.adLink}
+              href={u.adUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => {
+                // Ссылка на свой канал, группу или профиль — открываем внутри приложения.
+                const internal = internalAdRoute(u.adUrl ?? "") ?? internalRoute(u.adUrl ?? "", window.location.origin);
+                if (!internal) return;
+                e.preventDefault();
+                close();
+                void navigate(internal);
+              }}
+            >
+              Перейти →
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {ad ? (
+        <button type="button" className={styles.ad} title={ad.url ?? undefined} onClick={() => void openAd()}>
+          <span className={styles.adLabel}>Реклама</span>
+          {ad.title ? (
+            <p className={styles.adText}>
+              <b>{ad.title}</b>
+            </p>
+          ) : null}
+          <p className={styles.adText}>{ad.text}</p>
+        </button>
+      ) : null}
+
+      {data.pinnedChannels.length || isSelf ? (
+        <div className={styles.section}>
+          <div className={styles.sectionHead}>
+            <p className={styles.sectionTitle}>Каналы</p>
+            {isSelf ? (
+              <button type="button" className={styles.linkButton} onClick={() => setOverlay("channels")}>
+                {data.pinnedChannels.length ? "Изменить" : "Выбрать"}
+              </button>
+            ) : null}
+          </div>
+          {data.pinnedChannels.length ? (
+            data.pinnedChannels.map((c) => (
+              // Вся строка открывает канал (там — большая кнопка «Подписаться»).
+              <button key={c.id} type="button" className={styles.channelRow} onClick={() => openChannel(c)}>
+                <Avatar size={42} name={c.title} color={c.avatarColor} image={c.avatarImage} emoji={c.avatarEmoji} />
+                <span className={styles.channelBody}>
+                  <span className={styles.channelTitle}>
+                    {c.title}
+                    {c.isVerified ? (
+                      <span className={styles.badge}>
+                        <Icon name="Verified" size={13} />
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className={styles.channelSub}>
+                    {[c.username ? `@${c.username}` : "", c.members ? `${c.members} ${plural(c.members, "подписчик", "подписчика", "подписчиков")}` : ""].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                {c.isMember ? <span className={styles.member}>подписаны</span> : null}
+                <Icon name="ChevronRight" size={18} />
+              </button>
+            ))
+          ) : (
+            <p className={styles.hint}>Закрепите свои публичные каналы — их увидит каждый, кто откроет ваш профиль.</p>
+          )}
+        </div>
+      ) : null}
+
+      {stories?.stories.length ? (
+        <div className={styles.stories}>
+          <div className={styles.storiesHead}>
+            <button
+              type="button"
+              className={hasUnseen(stories) ? `${styles.storiesCircle} ${styles.unseen}` : styles.storiesCircle}
+              title="Смотреть истории"
+              aria-label="Смотреть истории"
+              onClick={() => openStoryViewer([stories], 0, { onChanged: () => void client.invalidateQueries({ queryKey: storyQueries.ofUser(userId).queryKey }) })}
+            >
+              {stories.stories[0]?.kind === "video" ? (
+                <video className={styles.storiesThumb} src={stories.stories[0].url} muted preload="metadata" />
+              ) : (
+                <img className={styles.storiesThumb} src={stories.stories[0]?.url} alt="" />
+              )}
+            </button>
+            <div>
+              <p className={styles.storiesTitle}>Истории</p>
+              <p className={styles.hint}>
+                {stories.stories.length} {storyWord(stories.stories.length)}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isServerModerator(me) && !isSelf ? (
+        <div className={styles.adminBlock}>
+          <p className={styles.adminTitle}>
+            <Icon name="Shield" size={13} /> {me.isDeveloper ? "Инструменты разработчика" : "Инструменты модератора"}
+          </p>
+          <ActionButton icon="Shield" onClick={() => setOverlay("admin")}>
+            {me.isDeveloper ? "Выдать покупку, модерация, данные" : "Модерация"}
+          </ActionButton>
+        </div>
+      ) : null}
+
+      {tabs.length ? (
+        <>
+          {/* Вкладки — обычные кнопки, как в profileDialog.js. */}
+          <div ref={tabsRef} className={styles.tabs}>
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                aria-pressed={t.id === activeTab}
+                className={t.id === activeTab ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className={styles.tabContent}>
+            <ProfileTabContent tab={activeTab} user={{ ...u, giftsReceived: u.giftsReceived ?? [] }} isSelf={isSelf} shared={sharedData} sharedLoaded={!shared.isPending} channels={data.pinnedChannels}
+              onGiftsChanged={(giftsReceived) => patchProfile((p) => ({ user: { ...p.user, giftsReceived } as UserProfile["user"] }))}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {overlay === "avatars" ? (
+        <AvatarViewer
+          user={u}
+          avatars={data.contactAvatars}
+          canEdit={isSelf}
+          onChange={(updated) => {
+            patchProfile((p) => ({ user: { ...p.user, ...updated } as UserProfile["user"] }));
+            if (isSelf) client.setQueryData(sessionQueries.current().queryKey, (s) => (s?.user ? { ...s, user: { ...s.user, ...updated } } : s));
+          }}
+          onClose={() => setOverlay(null)}
+        />
+      ) : null}
+      {overlay === "edit-contact" ? (
+        <EditContactDialog
+          user={u}
+          contactName={data.contactName}
+          note={data.contactNote}
+          photo={data.contactPhoto ?? null}
+          avatars={data.contactAvatars}
+          openDm={async () => {
+            const { chat } = await openDm(userId, u.name, u.avatarColor);
+            return chat.id;
+          }}
+          onSaved={({ note }) => {
+            patchProfile({ contactNote: note });
+            // Имя и фото контакта сервер подставляет везде — перечитываем профиль, контакты и чаты.
+            void client.invalidateQueries({ queryKey: userQueries.profile(userId).queryKey });
+            void client.invalidateQueries({ queryKey: userQueries.contacts().queryKey });
+            void client.invalidateQueries({ queryKey: chatQueries.list().queryKey });
+          }}
+          onClose={() => setOverlay(null)}
+        />
+      ) : null}
+      {overlay === "qr" ? <ProfileQrDialog user={u} onClose={() => setOverlay(null)} /> : null}
+      {overlay === "admin" ? (
+        <Suspense fallback={null}>
+          <AdminUserCard
+            user={{ id: userId, name: u.name }}
+            onClose={() => {
+              setOverlay(null);
+              // Метка, галочка, Premium — могли поменяться: профиль перечитываем.
+              void client.invalidateQueries({ queryKey: userQueries.profile(userId).queryKey });
+            }}
+          />
+        </Suspense>
+      ) : null}
+      {overlay === "report" ? <ReportDialog target={{ type: "user", id: userId }} targetLabel={u.name} onClose={() => setOverlay(null)} /> : null}
+      {overlay === "channels" ? <PinnedChannelsDialog pinned={data.pinnedChannels} onSaved={(next) => patchProfile({ pinnedChannels: next })} onClose={() => setOverlay(null)} /> : null}
+      {overlay === "share" ? (
+        <ChatPickerDialog
+          title="Поделиться контактом"
+          exclude={selfDm}
+          onSend={async (chatId) => {
+            try {
+              await profileApi.sendContact(chatId, { userId: u.id, name: u.name, phone: u.phone });
+              toast("Контакт отправлен");
+            } catch (err) {
+              toast(errorText(err, "Не удалось отправить контакт"), { error: true });
+            }
+          }}
+          onClose={() => setOverlay(null)}
+        />
+      ) : null}
+    </Shell>
+    {showDotsMenu && (
+      <div
+        ref={dotsMenuRef}
+        className={styles.overlay}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setShowDotsMenu(false);
+        }}
+      >
+        <div className={styles.panel} onPointerDown={(e) => e.stopPropagation()}>
+          <div className={styles.header}>
+            <h2>Дополнительные действия</h2>
+            <button
+              type="button"
+              className={styles.iconButton}
+              title="Закрыть"
+              aria-label="Закрыть меню"
+              onClick={() => setShowDotsMenu(false)}
+            >
+              <Icon name="X" size={18} />
+            </button>
+          </div>
+          <div className={styles.body}>
+            <div className={styles.actions}>
+              {isSelf ? (
+                <ActionButton icon="Edit" onClick={() => { setShowDotsMenu(false); close(); void navigate("/settings/profile"); }}>Изменить профиль</ActionButton>
+              ) : null}
+              {u.username ? <ActionButton icon="Copy" onClick={() => { setShowDotsMenu(false); void copyText(profileLink(), "Ссылка на профиль скопирована"); }}>Скопировать ссылку</ActionButton> : null}
+              {u.username ? <ActionButton icon="Qrcode" onClick={() => { setShowDotsMenu(false); setOverlay("qr"); }}>QR-код</ActionButton> : null}
+              {inContacts && !isSelf ? <ActionButton icon="Edit" onClick={() => { setShowDotsMenu(false); setOverlay("edit-contact"); }}>Изменить контакт</ActionButton> : null}
+              {!isSelf && !u.isBot ? <ActionButton icon={inContacts ? "Trash" : "Plus"} onClick={() => { setShowDotsMenu(false); void toggleContact(); }}>{inContacts ? "Удалить из контактов" : "Добавить в контакты"}</ActionButton> : null}
+              {!isSelf && !u.isBot ? <ActionButton icon="Gift" onClick={() => { setShowDotsMenu(false); openGiftShop({ recipient: { id: u.id, name: u.name } }); }}>Отправить подарок</ActionButton> : null}
+              {!isSelf && !u.isBot && !blocked ? <ActionButton icon="Video" onClick={() => { setShowDotsMenu(false); void call("video"); }}>Видеозвонок</ActionButton> : null}
+              {!isSelf && !u.isBot && !blocked ? <ActionButton icon="Lock" onClick={() => { setShowDotsMenu(false); void startSecretChat(); }}>Начать секретный чат</ActionButton> : null}
+              {!isSelf ? <ActionButton icon="Forward" onClick={() => { setShowDotsMenu(false); shareContact(); }}>Поделиться контактом</ActionButton> : null}
+              {!isSelf ? <ActionButton icon="Info" danger onClick={() => { setShowDotsMenu(false); setOverlay("report"); }}>Пожаловаться</ActionButton> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
+}
+
+/**
+ * «О себе» с кнопками-ссылками: @имя, ссылка на свой профиль, канал, группу или
+ * сообщество открываются внутри приложения (профиль при этом закрывается).
+ */
+function ProfileLinks({ text, onOpen }: { text: string; onOpen: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <MessageLinks
+      value={{
+        onMention: (handle) => {
+          onOpen();
+          void navigate(`/${handle.replace(/^@/, "")}`);
+        },
+      }}
+    >
+      <span
+        className={styles.bioLinks}
+        onClickCapture={(e) => {
+          const a = (e.target as HTMLElement).closest("a");
+          if (a && internalRoute(a.href, window.location.origin)) onOpen();
+        }}
+      >
+        <MessageText text={text} />
+      </span>
+    </MessageLinks>
+  );
+}
+
+/**
+ * Кнопки в профиле (как в Telegram): «@ник» и ссылка на свой сайт открываются внутри
+ * приложения (профиль закрывается), остальные ссылки — во встроенном браузере, как ссылки в «О себе».
+ */
+function ProfileButtons({ links, onOpen }: { links: { title: string; target: string }[]; onOpen: () => void }) {
+  const navigate = useNavigate();
+  const open = (target: string) => {
+    const internal = target.startsWith("@") ? `/u/${target.slice(1)}` : internalRoute(target, window.location.origin);
+    if (!internal) return openInAppBrowser(target);
+    onOpen();
+    void navigate(internal);
+  };
+  return (
+    <div className={styles.linkButtons}>
+      {links.map((link, i) => (
+        <button key={i} type="button" className={styles.linkButton} title={link.target} onClick={() => open(link.target)}>
+          <EmojiText text={link.title} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type ProfileUsername = NonNullable<ProfileUser["usernames"]>[number];
+
+function usernameKind(item: ProfileUsername) {
+  if (!item.priceStars) return "Бесплатный";
+  return item.priceStars >= 1000 ? "Редкий" : "Платный";
+}
+
+/** Все имена находятся в одном информационном поле; клик открывает детали, не новый профиль. */
+function ProfileUsernameInfo({ user }: { user: ProfileUser }) {
+  const names: ProfileUsername[] = user.usernames?.length
+    ? user.usernames
+    : user.username
+      ? [{ username: user.username, primary: true, pinned: false }]
+      : [];
+  const [selected, setSelected] = useState<ProfileUsername | null>(null);
+  if (!names.length) return null;
+  return (
+    <div className={styles.usernameInfo} aria-label="Юзернеймы">
+      <div className={styles.usernameInfoIcon}><Icon name="At" size={20} /></div>
+      <div className={styles.usernameInfoBody}>
+        <p className={styles.infoLabel}>Юзернеймы</p>
+        <div className={styles.usernameInfoList}>
+          {names.map((item) => (
+            <button key={item.username} type="button" className={styles.usernameInfoButton} onClick={() => setSelected(item)}>
+              @{item.username}
+              {item.primary ? <span className={styles.usernameInfoBadge}>Основной</span> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+      {selected ? (
+        <Dialog title={`@${selected.username}`} onClose={() => setSelected(null)}>
+          <div className={styles.usernameDetails}>
+            <div className={styles.usernameDetailsBadges}>
+              {selected.primary ? <span className={styles.usernameInfoBadge}>Основной</span> : <span className={styles.usernameInfoBadge}>Дополнительный</span>}
+              {selected.pinned ? <span className={styles.usernameInfoBadge}>Закреплён</span> : <span className={styles.usernameInfoBadge}>Не закреплён</span>}
+            </div>
+            {selected.priceStars != null ? (
+              <p className={styles.usernameDetailsLine}>{usernameKind(selected)} · куплен за <strong>{selected.priceStars} ⭐</strong></p>
+            ) : (
+              <p className={styles.usernameDetailsLine}>{usernameKind(selected)} юзернейм</p>
+            )}
+            {selected.createdAt ? <p className={styles.usernameDetailsHint}>Добавлен {new Date(selected.createdAt).toLocaleDateString("ru-RU")}</p> : null}
+          </div>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+function Shell({ onClose, children, fab, onMore }: { onClose: () => void; children: ReactNode; fab?: ReactNode; onMore?: () => void }) {
+  return (
+    <div
+      className={styles.overlay}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <aside className={styles.panel} aria-label="Профиль">
+        <div className={styles.header}>
+          <h2>Профиль</h2>
+          {onMore ? (
+            <button
+              type="button"
+              className={styles.iconButton}
+              title="Дополнительные действия"
+              aria-label="Дополнительные действия профиля"
+              onClick={onMore}
+            >
+              <Icon name="More" size={18} />
+            </button>
+          ) : null}
+          <button type="button" className={styles.iconButton} title="Закрыть" aria-label="Закрыть профиль" onClick={onClose}>
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <div className={styles.body}>{children}</div>
+      </aside>
+      {fab}
+    </div>
+  );
+}
+function QuickAction({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className={styles.quickAction} onClick={onClick}>
+      <Icon name={icon} size={20} />
+      <span className={styles.quickLabel}>{label}</span>
+    </button>
+  );
+}
+
+function ActionButton({ icon, danger, onClick, children }: { icon: IconName; danger?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className={danger ? `${styles.actionButton} ${styles.danger}` : styles.actionButton} onClick={onClick}>
+      <Icon name={icon} size={22} />
+      {children}
+    </button>
+  );
+}
+
+/** Адрес бизнеса (tweb .business-location): нажатие открывает карту, без координат — копирует. */
+function BusinessLocation({ user }: { user: { businessAddress?: string; businessLat?: number; businessLng?: number } }) {
+  const address = user.businessAddress ?? "";
+  const hasGeo = typeof user.businessLat === "number" && typeof user.businessLng === "number";
+  return (
+    <InfoRow
+      icon="MapPin"
+      value={address}
+      label="Местоположение"
+      multiline
+      onClick={() => {
+        if (!hasGeo) return void copyText(address, "Адрес скопирован");
+        void askConfirm("Открыть адрес на карте?", { okLabel: "Открыть" }).then((ok) => {
+          if (ok) openExternally(`https://yandex.ru/maps/?pt=${user.businessLng},${user.businessLat}&z=17&l=map`);
+        });
+      }}
+    />
+  );
+}
