@@ -39,7 +39,6 @@ export default {
     const { resource, action } = route(url.pathname, request.method);
     try {
       if (resource === 'health') return json({ ok: true, service: 'retrynet-api', time: now() });
-      if (resource === 'media' && request.method === 'POST') { const form=await request.formData(); const file=form.get('file'); if(!(file instanceof File))return json({error:'file_required'},400); const key=`${user.id}/${id()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`; await env.BUCKET.put(key,file.stream(),{httpMetadata:{contentType:file.type||'application/octet-stream'}}); return json({key,url:`/media/${key}`,content_type:file.type||'application/octet-stream'},201); }
       if (resource === 'auth' && action === 'register' && request.method === 'POST') {
         const body = await readBody(request); if ((!body.email && !body.phone) || !body.password || !body.display_name || !body.username) return json({ error: 'email_or_phone_password_name_username_required' }, 400);
         const userId = id(); const passwordHash = await hash(body.password);
@@ -62,6 +61,7 @@ export default {
       }
       if (resource === 'auth' && action === 'forgot-password' && request.method === 'POST') { const body=await readBody(request); const account=await env.DB.prepare('SELECT id FROM users WHERE email=? OR phone=?').bind(body.identity||'',body.identity||'').first(); if(account)await env.DB.prepare('INSERT INTO notifications (id,user_id,type,payload_json) VALUES (?,?,?,?)').bind(id(),account.id,'password_reset',JSON.stringify({requested_at:now()})).run(); return json({ok:true}); }
       const user = await requireSession(request, env); if (!user) return json({ error: 'authentication_required' }, 401);
+      if (resource === 'media' && request.method === 'POST') { const form=await request.formData(); const file=form.get('file'); if(!(file instanceof File))return json({error:'file_required'},400); const key=`${user.id}/${id()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`; await env.BUCKET.put(key,file.stream(),{httpMetadata:{contentType:file.type||'application/octet-stream'}}); return json({key,url:`/media/${key}`,content_type:file.type||'application/octet-stream'},201); }
       if (resource === 'me' && request.method === 'GET') return json({ user: safeUser(user) });
       if (resource === 'auth' && action === 'change-password' && request.method === 'POST') { const body=await readBody(request); const row=await env.DB.prepare('SELECT password_hash FROM users WHERE id=?').bind(user.id).first(); if(!row||row.password_hash!==await hash(body.current_password||''))return json({error:'invalid_current_password'},400); await env.DB.prepare('UPDATE users SET password_hash=?,updated_at=? WHERE id=?').bind(await hash(body.new_password||''),now(),user.id).run(); return json({ok:true}); }
       if (resource === 'auth' && action === 'verify-email' && request.method === 'POST') { await env.DB.prepare('UPDATE users SET email_verified_at=?,updated_at=? WHERE id=?').bind(now(),now(),user.id).run(); return json({ok:true}); }
