@@ -23,6 +23,11 @@ services:
       VITE_BACKEND_TARGET: http://api:3000
     ports:
       - "4000:5173"
+    networks:
+      default: {}
+      dokploy-network:
+        aliases:
+          - nexora-web
     depends_on:
       - api
 
@@ -50,3 +55,7 @@ services:
 volumes:
   nexora-postgres:
   nexora-redis:
+
+networks:
+  dokploy-network:
+    external: true
