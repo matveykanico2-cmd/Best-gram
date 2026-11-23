@@ -61,7 +61,7 @@ export default function EditProfileModal({ isOpen, onClose }) {
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative bg-black w-full max-w-[600px] max-h-[90vh] rounded-2xl overflow-hidden flex flex-col"
+        className="relative bg-black w-full max-w-[440px] max-h-[82vh] rounded-2xl overflow-hidden flex flex-col"
       >
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
           {/* Hidden Inputs */}
@@ -98,7 +98,7 @@ export default function EditProfileModal({ isOpen, onClose }) {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {/* Banner Edit */}
-            <div className="relative h-48 bg-[#333639]">
+            <div className="relative h-28 bg-[#333639]">
               {formData.banner && (
                 <img 
                   src={formData.banner} 
@@ -125,8 +125,8 @@ export default function EditProfileModal({ isOpen, onClose }) {
             </div>
 
             {/* Avatar Edit */}
-            <div className="px-4 -mt-12 relative z-20 mb-8">
-              <div className="relative w-28 h-28">
+            <div className="px-4 -mt-10 relative z-20 mb-5">
+              <div className="relative w-20 h-20">
                 <img 
                   src={formData.avatar} 
                   alt="Avatar" 

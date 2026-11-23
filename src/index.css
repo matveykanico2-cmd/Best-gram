@@ -41,7 +41,8 @@ button { cursor: pointer; }
 .tweet-content-link:hover { text-decoration: underline; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
-.mobile-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(4rem + env(safe-area-inset-bottom)); }
+.mobile-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(4rem + env(safe-area-inset-bottom)); scrollbar-width: none; }
+.mobile-nav::-webkit-scrollbar { display: none; }
 .messages-shell { height: calc(100dvh - 4rem - env(safe-area-inset-bottom)); }
 .story-dialog, .story-viewer { max-height: calc(100dvh - 2rem); overflow-y: auto; }
 @media (max-width: 767px) {

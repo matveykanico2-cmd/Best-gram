@@ -9,12 +9,12 @@ import { cn } from '../lib/utils'
 import { AnimatePresence } from 'framer-motion'
 import Avatar from '../components/Avatar'
 
-const TABS = ['Публикации', 'Ответы', 'Избранное', 'Медиа', 'Лайки']
+const TABS = ['Ответы', 'Избранное', 'Медиа', 'Лайки']
 
 export default function Profile() {
   const navigate = useNavigate()
   const { userId: paramId } = useParams()
-  const [activeTab, setActiveTab] = useState('Публикации')
+  const [activeTab, setActiveTab] = useState('Ответы')
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSafetyMenuOpen, setIsSafetyMenuOpen] = useState(false)
   const { users, activeUserId, tweets, following, toggleFollow, blockUser, reportUser } = useStore()
@@ -32,8 +32,6 @@ export default function Profile() {
 
   const renderTweets = () => {
     switch (activeTab) {
-      case 'Публикации':
-        return userTweets.map(t => <TweetCard key={t.id} tweet={t} />)
       case 'Ответы':
         return userReplies.map(t => <TweetCard key={t.id} tweet={t} isReply />)
       case 'Лайки':

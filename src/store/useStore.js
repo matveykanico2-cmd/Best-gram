@@ -179,10 +179,10 @@ export const useStore = create(
         } catch { return }
       },
 
-      addStory: async (text, image = null) => {
-        if (!text?.trim()) return
-        try { await api('/api/stories', { method: 'POST', body: JSON.stringify({ text, image }) }) } catch { return }
-        set((state) => ({ stories: [{ id: `s_${Date.now()}`, authorId: state.activeUserId, text: text.trim(), image, createdAt: new Date().toISOString() }, ...(state.stories || [])] }))
+      addStory: async (text, image = null, mediaType = null) => {
+        if (!text?.trim() && !image) return
+        try { await api('/api/stories', { method: 'POST', body: JSON.stringify({ text, image, mediaType }) }) } catch { return }
+        set((state) => ({ stories: [{ id: `s_${Date.now()}`, authorId: state.activeUserId, text: text?.trim() || '', image, mediaType, createdAt: new Date().toISOString() }, ...(state.stories || [])] }))
       },
 
       sendMessage: async (conversationId, text, media = null) => {
@@ -208,7 +208,7 @@ export const useStore = create(
         set(state => ({
           messages: [...state.messages, newMessage],
           conversations: state.conversations.map(c => 
-            c.id === conversationId ? { ...c, lastMessage: text, timestamp: newMessage.timestamp, unread: false } : c
+            c.id === conversationId ? { ...c, lastMessage: text || '📎 Медиафайл', timestamp: newMessage.timestamp, unread: false } : c
           ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         }))
 
@@ -228,7 +228,7 @@ export const useStore = create(
         return {
           messages: [...state.messages, normalized],
           conversations: state.conversations.map(conversation => conversation.id === normalized.conversationId
-            ? { ...conversation, lastMessage: normalized.text, timestamp: normalized.timestamp }
+            ? { ...conversation, lastMessage: normalized.text || '📎 Медиафайл', timestamp: normalized.timestamp, unread: normalized.senderId !== state.activeUserId }
             : conversation
           ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         }

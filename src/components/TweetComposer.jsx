@@ -207,10 +207,10 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
 
             <button
               onClick={handlePost}
-              disabled={!content.trim() || isOverLimit}
+              disabled={(!content.trim() && !image) || isOverLimit}
               className={cn(
                 "bg-primary text-white font-bold px-4 py-1.5 rounded-full transition-all",
-                (!content.trim() || isOverLimit) ? "opacity-50 cursor-not-allowed" : "hover:bg-[#1a8cd8]"
+                ((!content.trim() && !image) || isOverLimit) ? "opacity-50 cursor-not-allowed" : "hover:bg-[#1a8cd8]"
               )}
             >
               Опубликовать

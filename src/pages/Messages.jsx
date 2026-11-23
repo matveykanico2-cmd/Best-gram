@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar'
 import { cn } from '../lib/utils'
 import { format } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
+import { pushNotification } from '../lib/notifications'
 
 const ConversationItem = ({ conversation, active, onClick }) => {
   const users = useStore(state => state.users)
@@ -113,11 +114,17 @@ export default function Messages() {
   React.useEffect(() => {
     if (!selectedConvId || !getApiToken()) return undefined
     api(`/api/chats/${selectedConvId}/read`, { method: 'POST' }).catch(() => {})
-    const socket = new WebSocket(`${API_URL.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(getApiToken())}`)
-    socket.onopen = () => socket.send(JSON.stringify({ type: 'chat:join', chatId: selectedConvId }))
-    socket.onmessage = (event) => { try { const payload = JSON.parse(event.data); if (payload.type === 'message:new') receiveMessage(payload.message) } catch (error) { void error } }
-    return () => socket.close()
-  }, [selectedConvId, receiveMessage])
+    let reconnectTimer
+    let socket
+    const connect = () => {
+      socket = new WebSocket(`${API_URL.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(getApiToken())}`)
+      socket.onopen = () => socket.send(JSON.stringify({ type: 'chat:join', chatId: selectedConvId }))
+      socket.onmessage = (event) => { try { const payload = JSON.parse(event.data); if (payload.type === 'message:new') { receiveMessage(payload.message); if (payload.message.senderId !== activeUserId) pushNotification('Новое сообщение', { body: payload.message.text || 'Вам отправили медиафайл', tag: `chat-${selectedConvId}` }) } } catch (error) { void error } }
+      socket.onclose = () => { if (selectedConvId) reconnectTimer = window.setTimeout(connect, 1500) }
+    }
+    connect()
+    return () => { window.clearTimeout(reconnectTimer); socket?.close() }
+  }, [selectedConvId, receiveMessage, activeUserId])
 
   const handleBack = () => setSelectedConvId(null)
 
@@ -229,7 +236,7 @@ export default function Messages() {
               </div>
               <button 
                 onClick={() => {
-                  if (messageText.trim()) {
+                  if (messageText.trim() || mediaDraft) {
                     sendMessage(selectedConvId, messageText, mediaDraft)
                     setMessageText('')
                     setMediaDraft(null)
