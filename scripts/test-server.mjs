@@ -12,6 +12,6 @@ const server = createServer(async (request, response) => {
   const target = normalize(join(root, relative));
   if (!target.startsWith(root)) { response.writeHead(403); response.end('Forbidden'); return; }
   try { const body = await readFile(target); response.writeHead(200, { 'content-type': types[extname(target)] || 'application/octet-stream', 'cache-control': 'no-store' }); response.end(body); }
-  catch { response.writeHead(404, { 'content-type':'text/plain; charset=utf-8' }); response.end('Not found'); }
+  catch { try { const body = await readFile(join(root,'index.html')); response.writeHead(200, { 'content-type':'text/html; charset=utf-8', 'cache-control':'no-store' }); response.end(body); } catch { response.writeHead(404, { 'content-type':'text/plain; charset=utf-8' }); response.end('Not found'); } }
 });
 server.listen(port, '127.0.0.1', () => console.log(`RetryNet test server: http://127.0.0.1:${port}`));
