@@ -1,0 +1,11 @@
+{
+  "name": "Bestgram",
+  "short_name": "Bestgram",
+  "description": "Bestgram — посты, истории, сообщения и люди в одной социальной сети.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0710",
+  "theme_color": "#0a0710",
+  "icons": [{ "src": "/bestgram-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

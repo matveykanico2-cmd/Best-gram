@@ -3,16 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "test": "node tests/smoke.mjs",
-    "build": "node scripts/build-worker.mjs",
+    "build": "npm run build:stack && node scripts/build-worker.mjs",
     "start": "node scripts/test-server.mjs",
-    "dev": "node scripts/test-server.mjs",
+    "dev": "npm run dev:stack",
     "lint": "node --check scripts/test-server.mjs && node --check worker/index.js",
-    "typecheck": "node scripts/typecheck.mjs",
-    "db:migrate": "node scripts/local-db-migrate.mjs"
+    "typecheck": "npm run typecheck --workspace apps/api && node scripts/typecheck.mjs",
+    "db:migrate": "node scripts/local-db-migrate.mjs",
+    "dev:stack": "concurrently -k \"npm run dev --workspace apps/api\" \"npm run dev --workspace apps/web\"",
+    "build:stack": "npm run build --workspace apps/api && npm run build --workspace apps/web",
+    "test:stack": "npm run test --workspace apps/api && npm test"
   },
   "dependencies": {
+    "concurrently": "^9.2.1",
     "ws": "^8.23.0"
   }
 }

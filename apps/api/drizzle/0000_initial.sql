@@ -1,0 +1,11 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE IF NOT EXISTS users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email varchar(320) UNIQUE, username varchar(64) NOT NULL UNIQUE, display_name varchar(160) NOT NULL, password_hash text NOT NULL, avatar_url text, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS sessions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
+CREATE TABLE IF NOT EXISTS posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, body text NOT NULL DEFAULT '', audience varchar(24) NOT NULL DEFAULT 'friends', created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS posts_author_idx ON posts(author_id);
+CREATE INDEX IF NOT EXISTS posts_created_idx ON posts(created_at);
+CREATE TABLE IF NOT EXISTS conversations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title varchar(160), created_by uuid NOT NULL REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS conversation_members (conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, PRIMARY KEY (conversation_id, user_id));
+CREATE TABLE IF NOT EXISTS messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE, sender_id uuid NOT NULL REFERENCES users(id), body text NOT NULL DEFAULT '', sent_at timestamptz NOT NULL DEFAULT now(), read_at timestamptz);
+CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id, sent_at);

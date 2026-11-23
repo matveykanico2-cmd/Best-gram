@@ -7,7 +7,7 @@
 ## Working now
 
 - `npm install` installs the WebSocket dependency.
-- `npm run dev` / `npm start` launches the real local API server.
+- `npm start` launches the real local SQLite/Worker-compatible API server; `npm run dev` launches the React/Nest development stack.
 - SQLite persists accounts, sessions, posts, feed, messages and feature data.
 - `ws://host/api/realtime` broadcasts authenticated-client chat events.
 - Local media is stored in `data/media/`.
@@ -16,4 +16,11 @@
 
 ## Not falsely claimed as complete
 
-The requirements in `link.md` specifically demand a React 19/Vite/TypeScript frontend, NestJS backend, PostgreSQL/Drizzle and Socket.IO. The existing product is a single-file frontend plus a Cloudflare Worker API, and its verified local runtime is Node + SQLite + WebSocket. Those are compatible deployment modes but not the same architecture. A full React/Nest/PostgreSQL rewrite must be performed as a separate migration while preserving the current database and production behavior; this repository does not claim that rewrite is complete.
+The migration is now present as a parallel production stack: `apps/web` (React/Vite), `apps/api` (NestJS/Drizzle/PostgreSQL), shared contracts, Docker infrastructure and a PostgreSQL migration. The legacy Worker/SQLite mode is intentionally preserved for backward-compatible local and Cloudflare operation. Remaining link.md features such as calls, marketplace and media S3 wiring require their dedicated modules and are not marked complete merely because the base stack builds.
+
+## Migration checks
+
+- `npm run build` — React, NestJS and Worker build pass.
+- `npm run typecheck` — API TypeScript and legacy runtime checks pass.
+- `npm run test:stack` — API schema test and legacy smoke test pass.
+- `apps/api/drizzle/0000_initial.sql` — PostgreSQL tables, foreign keys and indexes.
