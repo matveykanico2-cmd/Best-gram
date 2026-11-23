@@ -234,16 +234,17 @@ export const useStore = create(
         }
       }),
 
-      addTweet: async (content, parentId = null, image = null) => {
+      addTweet: async (content, parentId = null, image = null, mediaType = null) => {
         const activeUserId = get().activeUserId
         let result
-        try { result = await api('/api/posts', { method: 'POST', body: JSON.stringify({ content, image }) }) } catch { return }
+        try { result = await api('/api/posts', { method: 'POST', body: JSON.stringify({ content, image, mediaType }) }) } catch { return }
         const id = result.id
         const newTweet = {
           id,
           authorId: activeUserId,
           content,
           image,
+          mediaType,
           timestamp: new Date().toISOString(),
           parentId,
           stats: {

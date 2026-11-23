@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Image, List, Smile, Calendar, MapPin, Loader2 } from 'lucide-react'
+import { Image, List, Smile, Calendar, MapPin, Loader2, Paperclip } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { cn } from '../lib/utils'
 import Avatar from './Avatar'
@@ -7,6 +7,7 @@ import Avatar from './Avatar'
 export default function TweetComposer({ parentId = null, onPostSuccess }) {
   const [content, setContent] = useState('')
   const [image, setImage] = useState(null)
+  const [mediaType, setMediaType] = useState(null)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const addTweet = useStore(state => state.addTweet)
   const { users, activeUserId } = useStore()
@@ -33,10 +34,15 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0]
+    e.target.value = ''
     if (file) {
+      if (file.size > 6 * 1024 * 1024) return window.alert('Медиафайл должен быть не больше 6 МБ')
+      const nextType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : null
+      if (!nextType) return window.alert('Поддерживаются фото, видео и аудио')
       const reader = new FileReader()
       reader.onloadend = () => {
         setImage(reader.result)
+        setMediaType(nextType)
       }
       reader.readAsDataURL(file)
     }
@@ -44,9 +50,10 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
 
   const handlePost = () => {
     if ((content.trim() || image) && !isOverLimit) {
-      addTweet(content, parentId, image)
+      addTweet(content, parentId, image, mediaType)
       setContent('')
       setImage(null)
+      setMediaType(null)
       if (onPostSuccess) onPostSuccess()
     }
   }
@@ -66,9 +73,11 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
 
         {image && (
           <div className="relative mt-2 rounded-2xl overflow-hidden border border-border group">
-            <img src={image} alt="Upload" className="w-full h-auto max-h-[300px] object-cover" />
+            {mediaType === 'video' && <video src={image} controls className="w-full max-h-[300px] object-contain" />}
+            {mediaType === 'audio' && <audio src={image} controls className="w-full p-4" />}
+            {(!mediaType || mediaType === 'image') && <img src={image} alt="Upload" className="w-full h-auto max-h-[300px] object-cover" />}
             <button 
-              onClick={() => setImage(null)}
+              onClick={() => { setImage(null); setMediaType(null) }}
               className="absolute top-2 left-2 p-1.5 bg-black/60 hover:bg-black/40 text-white rounded-full transition-colors"
             >
               <Loader2 size={20} className="hidden" /> {/* Placeholder for logic */}
@@ -83,14 +92,14 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
               type="file" 
               ref={fileInputRef} 
               onChange={handleImageUpload} 
-              accept="image/*" 
+              accept="image/*,video/*,audio/*" 
               className="hidden" 
             />
             <button 
               onClick={() => fileInputRef.current.click()}
               className="p-2 hover:bg-primary/10 rounded-full transition-colors"
             >
-              <Image size={18} />
+              <Paperclip size={18} />
             </button>
             <button type="button" title="Добавить список" onClick={() => setContent(value => `${value}${value ? ' ' : ''}📋`)} className="p-2 hover:bg-primary/10 rounded-full transition-colors">
               <List size={18} />

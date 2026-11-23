@@ -95,12 +95,10 @@ export default function TweetCard({ tweet, isReply = false }) {
         </div>
 
         {tweet.image && (
-          <div className="mt-3 rounded-2xl border border-border overflow-hidden max-h-[512px] bg-black">
-            <img 
-              src={tweet.image} 
-              alt="Tweet content" 
-              className="w-full h-full object-contain"
-            />
+          <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-black">
+            {tweet.mediaType === 'video' && <video src={tweet.image} controls className="max-h-[512px] w-full object-contain" />}
+            {tweet.mediaType === 'audio' && <audio src={tweet.image} controls className="w-full p-4" />}
+            {(!tweet.mediaType || tweet.mediaType === 'image') && <img src={tweet.image} alt="Медиа публикации" className="max-h-[512px] w-full object-contain" />}
           </div>
         )}
 
