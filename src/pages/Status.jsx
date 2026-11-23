@@ -14,14 +14,14 @@ export default function Status() {
 
   if (!tweet) {
     return (
-      <div className="flex-1 max-w-[600px] border-r border-border ml-20 xl:ml-[256px] p-4 text-center">
+      <div className="flex-1 max-w-[600px] border-r border-border md:ml-20 xl:ml-[256px] p-4 text-center">
         Tweet not found.
       </div>
     )
   }
 
   return (
-    <main className="flex-1 max-w-[600px] min-h-screen border-r border-border ml-20 xl:ml-[256px]">
+    <main className="flex-1 max-w-[600px] min-h-screen border-r border-border md:ml-20 xl:ml-[256px] w-full">
       <header className="sticky top-0 bg-black/80 backdrop-blur-md z-10 border-b border-border flex items-center gap-6 px-4 py-2">
         <button 
           onClick={() => navigate(-1)}

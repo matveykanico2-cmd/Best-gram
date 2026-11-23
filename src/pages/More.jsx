@@ -33,7 +33,7 @@ export default function More() {
   }
 
   return (
-    <div className="flex-1 border-r border-border min-h-screen max-w-[600px] ml-20 xl:ml-64">
+    <div className="flex-1 border-r border-border min-h-screen max-w-[600px] md:ml-20 xl:ml-64 w-full">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md px-4 py-3 border-b border-border flex items-center gap-6">
         <button 

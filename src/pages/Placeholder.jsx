@@ -1,7 +1,7 @@
 
 export default function Placeholder({ title }) {
   return (
-    <div className="flex-1 border-r border-border min-h-screen ml-20 xl:ml-64 max-w-[600px]">
+    <div className="flex-1 border-r border-border min-h-screen md:ml-20 xl:ml-64 max-w-[600px] w-full">
       <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md px-4 py-3 border-b border-border">
         <h1 className="text-xl font-bold">{title}</h1>
       </div>
