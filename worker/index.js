@@ -1,7 +1,8 @@
 const page = "__EMBEDDED_HTML__";
+const securityHeaders = { 'x-content-type-options':'nosniff', 'x-frame-options':'DENY', 'referrer-policy':'strict-origin-when-cross-origin', 'permissions-policy':'camera=(self), microphone=(self), geolocation=()' };
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
-  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders }
 });
 const id = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
@@ -31,12 +32,12 @@ export default {
     if (url.pathname.startsWith('/media/') && request.method === 'GET') {
       const object = await env.BUCKET?.get(url.pathname.slice('/media/'.length));
       if (!object) return new Response('Not found', { status: 404 });
-      return new Response(object.body, { headers: { 'content-type': object.httpMetadata?.contentType || 'application/octet-stream', 'cache-control': 'public, max-age=31536000, immutable' } });
+      return new Response(object.body, { headers: { 'content-type': object.httpMetadata?.contentType || 'application/octet-stream', 'cache-control': 'public, max-age=31536000, immutable', ...securityHeaders } });
     }
     if (url.pathname === '/api/realtime' && request.headers.get('Upgrade') === 'websocket') {
       const pair = new WebSocketPair(); const [client, server] = Object.values(pair); server.accept(); server.addEventListener('message', event => { try { const payload = JSON.parse(event.data); server.send(JSON.stringify({ ...payload, received_at: now() })); } catch { server.send(JSON.stringify({ type: 'error', error: 'invalid_json' })); } }); server.addEventListener('close', () => server.close()); return new Response(null, { status: 101, webSocket: client });
     }
-    if (!url.pathname.startsWith('/api/')) return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (!url.pathname.startsWith('/api/')) return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8', ...securityHeaders } });
     if (request.method === 'OPTIONS') return new Response(null, { headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS' } });
     const { resource, action } = route(url.pathname, request.method);
     try {
