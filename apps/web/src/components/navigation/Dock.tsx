@@ -10,6 +10,11 @@ import {
   LogIn,
   Compass,
   ShieldCheck,
+  UsersRound,
+  ShoppingBag,
+  PhoneCall,
+  Video,
+  Settings,
 } from "lucide-react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "motion/react";
@@ -30,6 +35,11 @@ const Dock = () => {
     { icon: Bell, path: "/notifications", label: "Notifications" },
     { icon: MessageCircle, path: "/messages", label: "Messages" },
     { icon: Compass, path: "/discover", label: "Discover" },
+    { icon: UsersRound, path: "/communities", label: "Communities" },
+    { icon: ShoppingBag, path: "/marketplace", label: "Marketplace" },
+    { icon: PhoneCall, path: "/calls", label: "Calls" },
+    { icon: Video, path: "/videos", label: "Videos" },
+    { icon: Settings, path: "/settings", label: "Settings" },
     ...(user?.role === "admin" ? [{ icon: ShieldCheck, path: "/admin", label: "Admin" }] : []),
     { icon: User, path: "/profile", label: "Profile" },
   ];

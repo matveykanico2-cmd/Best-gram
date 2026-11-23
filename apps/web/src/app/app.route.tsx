@@ -12,6 +12,11 @@ import Messages from "../features/chats/pages/Messages";
 import NotFound from "./NotFound";
 import Discover from "../features/discover/Discover";
 import Admin from "../features/admin/Admin";
+import Communities from "../features/platform/pages/Communities";
+import Marketplace from "../features/platform/pages/Marketplace";
+import Calls from "../features/platform/pages/Calls";
+import Videos from "../features/platform/pages/Videos";
+import Settings from "../features/platform/pages/Settings";
 
 const router = createBrowserRouter([
   {
@@ -53,6 +58,11 @@ const router = createBrowserRouter([
             path: "/admin",
             element: <Admin />,
           },
+          { path: "/communities", element: <Communities /> },
+          { path: "/marketplace", element: <Marketplace /> },
+          { path: "/calls", element: <Calls /> },
+          { path: "/videos", element: <Videos /> },
+          { path: "/settings", element: <Settings /> },
         ],
       },
     ],

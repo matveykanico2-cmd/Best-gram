@@ -34,3 +34,5 @@ The migration is now present as a parallel production stack: `apps/web` (React/V
 - Production PostgreSQL, Redis, S3 and TURN must be supplied through deployment environment variables/services; the repository includes Docker Compose and the reproducible SQL migration but cannot verify external infrastructure without those services running.
 - WebRTC signaling and call history are implemented; a real two-device media call still needs an operator test with a reachable STUN/TURN service.
 - The preserved legacy Worker frontend remains available alongside the new React/Nest stack for backward compatibility.
+- `apps/web/src` is now fully `.ts/.tsx`; Vite, React Query, route pages and the client entrypoint no longer use JavaScript/JSX source files.
+- New online pages are wired to API-backed routes: communities, marketplace, calls, videos and settings.

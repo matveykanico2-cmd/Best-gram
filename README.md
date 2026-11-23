@@ -1,11 +1,21 @@
 # RetryNet
 
-RetryNet запускается как полноценный Node.js-сервер с SQLite и WebSocket.
+RetryNet — монорепозиторий с TypeScript frontend на React/Vite и реальным NestJS API на PostgreSQL/Drizzle. Legacy SQLite/Worker runtime сохранён для лёгкого локального режима и обратной совместимости.
 
 ## Локальный запуск
 
 ```bash
 npm install
+npm run dev
+```
+
+Frontend: `http://127.0.0.1:5173`
+API: `http://127.0.0.1:3000`
+Swagger: `http://127.0.0.1:3000/api/docs`
+
+Для лёгкого legacy-режима без PostgreSQL:
+
+```bash
 npm start
 ```
 
@@ -19,7 +29,17 @@ npm run typecheck
 npm run db:migrate
 ```
 
-`docker compose up -d` поднимает PostgreSQL, Redis и MinIO для следующего этапа миграции из `link.md`; текущий проверенный runtime использует локальную SQLite, чтобы запуск оставался лёгким и воспроизводимым.
+Для online-режима:
+
+```bash
+docker compose up -d --build
+npm run db:migrate:pg
+npm run dev
+```
+
+Compose поднимает Nest API, React frontend, PostgreSQL, Redis и MinIO.
+
+Frontend полностью переведён на `.ts/.tsx` и содержит отдельные страницы ленты, профиля, сообщений, сообществ, звонков, видео, marketplace, настроек и админки.
 
 При первом запуске создаются:
 
