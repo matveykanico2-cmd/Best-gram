@@ -44,6 +44,10 @@ button { cursor: pointer; }
 .mobile-nav { padding-bottom: env(safe-area-inset-bottom); height: calc(4rem + env(safe-area-inset-bottom)); scrollbar-width: none; }
 .mobile-nav::-webkit-scrollbar { display: none; }
 .messages-shell { height: calc(100dvh - 4rem - env(safe-area-inset-bottom)); }
+.message-bubble { max-width: min(85%, 620px); padding: .75rem 1rem; color: #fff; border-radius: 1.25rem; line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+.message-bubble-own { background: linear-gradient(135deg, #1d9bf0, #147dcc); border-bottom-right-radius: .35rem; }
+.message-bubble-incoming { background: #26384a; border: 1px solid rgba(161,190,214,.14); border-bottom-left-radius: .35rem; }
+.chat-action-button { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
 .story-dialog, .story-viewer { max-height: calc(100dvh - 2rem); overflow-y: auto; }
 @media (max-width: 767px) {
   .app-shell { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
@@ -53,6 +57,7 @@ button { cursor: pointer; }
   .auth-input { min-height: 48px; }
   .chat-input { min-height: 44px; font-size: 16px; }
   .chat-composer { padding-bottom: 8px; }
+  .message-bubble { max-width: 90%; padding: .7rem .85rem; }
   .loading-screen { padding: 24px; }
 }
 @media (min-width: 768px) { .messages-shell { height: 100dvh; } }

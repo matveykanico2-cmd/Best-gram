@@ -54,10 +54,7 @@ const MessageBubble = ({ message, isMe }) => (
     "flex flex-col mb-4",
     isMe ? "items-end" : "items-start"
   )}>
-    <div className={cn(
-      "max-w-[85%] px-4 py-3 rounded-2xl",
-      isMe ? "bg-primary text-white rounded-br-none" : "bg-[#2f3336] text-white rounded-bl-none"
-    )}>
+    <div className={cn('message-bubble', isMe ? 'message-bubble-own' : 'message-bubble-incoming')}>
       {message.mediaUrl && message.mediaType === 'image' && <img src={message.mediaUrl} alt={message.mediaName || 'Изображение'} className="mb-2 max-h-72 max-w-full rounded-xl object-contain" />}
       {message.mediaUrl && message.mediaType === 'video' && <video src={message.mediaUrl} controls className="mb-2 max-h-72 max-w-full rounded-xl" />}
       {message.mediaUrl && message.mediaType === 'audio' && <audio src={message.mediaUrl} controls className="mb-2 max-w-full" />}
@@ -218,12 +215,12 @@ export default function Messages() {
             <div className="chat-composer relative min-w-0 p-2 border-t border-border flex items-center gap-1 md:gap-2 bg-black sticky bottom-0 z-10">
               {emojiOpen && <div className="absolute bottom-full left-2 mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-border bg-[#0d1d2f] p-3 shadow-2xl">{['😀','😂','😍','😎','😭','🔥','✨','❤️','👍','🎉','🤝','🙏','🤔','😡','🥳','💬'].map(emoji => <button key={emoji} type="button" onClick={() => { setMessageText(value => `${value}${emoji}`); setEmojiOpen(false) }} className="rounded-lg p-2 text-xl hover:bg-[#12263a]">{emoji}</button>)}</div>}
               <div className="flex gap-0.5 md:gap-1 px-1 md:px-2">
-                <button type="button" onClick={() => mediaInputRef.current?.click()} title="Прикрепить фото, видео или аудио" className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
-                  <Paperclip size={18} className="md:w-5 md:h-5" />
+              <button type="button" onClick={() => mediaInputRef.current?.click()} title="Прикрепить фото, видео или аудио" className="chat-action-button p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
+                  <Paperclip size={20} />
                 </button>
                 <input ref={mediaInputRef} type="file" accept="image/*,video/*,audio/*" onChange={handleMedia} className="hidden" />
-                <button type="button" onClick={() => setEmojiOpen(value => !value)} title="Emoji" className="p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
-                  <Smile size={18} className="md:w-5 md:h-5" />
+                <button type="button" onClick={() => setEmojiOpen(value => !value)} title="Emoji" className="chat-action-button p-2 text-primary hover:bg-primary/10 rounded-full transition-colors">
+                  <Smile size={20} />
                 </button>
               </div>
               {mediaDraft && <button type="button" onClick={() => setMediaDraft(null)} title="Убрать вложение" className="flex max-w-20 items-center gap-1 rounded-lg bg-[#12263a] px-2 py-1 text-xs text-[#5de4ca]"><span className="truncate">{mediaDraft.mediaName}</span><X size={14} /></button>}
@@ -246,7 +243,7 @@ export default function Messages() {
                 disabled={!messageText.trim() && !mediaDraft}
                 className="p-2 text-primary disabled:opacity-50 hover:bg-primary/10 rounded-full transition-colors"
               >
-                <Send size={18} className="md:w-5 md:h-5" />
+                <Send size={20} />
               </button>
             </div>
           </>

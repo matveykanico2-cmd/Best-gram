@@ -1,11 +1,16 @@
 {
-  "name": "best-gram",
-  "short_name": "best-gram",
+  "id": "/",
+  "name": "Bestgram Social",
+  "short_name": "Bestgram",
   "description": "Публикации, истории и чаты best-gram",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#06121f",
   "theme_color": "#06121f",
   "lang": "ru",
+  "scope": "/",
+  "orientation": "portrait-primary",
+  "categories": ["social", "communication"],
+  "shortcuts": [{ "name": "Сообщения", "url": "/messages", "icons": [{ "src": "/best-gram-mark.svg", "sizes": "any", "type": "image/svg+xml" }] }, { "name": "Профиль", "url": "/profile", "icons": [{ "src": "/best-gram-mark.svg", "sizes": "any", "type": "image/svg+xml" }] }],
   "icons": [{ "src": "/best-gram-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }

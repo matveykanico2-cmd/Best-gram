@@ -102,6 +102,10 @@ Mount path: /app/server/data
 
 Для online-режима API запускается отдельным процессом командой `npm run api`. На хостинге укажите `VITE_API_URL` на публичный URL API и сохраните каталог `server/data` на постоянном диске. SMS-подтверждения нет: номер телефона используется как идентификатор аккаунта. В продакшене обязательно используйте HTTPS и задайте собственный `ADMIN_PASSWORD`.
 
+### Нативные сборки
+
+Подготовлены команды Capacitor: `npm run cap:add:android`, `npm run cap:add:ios`, `npm run cap:sync`. Android требует Android Studio/SDK, iOS — macOS/Xcode. Веб-версия остаётся PWA.
+
 ## Установка как приложение
 
 Frontend содержит `manifest.webmanifest` и service worker: после публикации сайт можно установить на Android, iOS и компьютере через меню браузера «Добавить на главный экран». API намеренно не кэшируется, поэтому публикации, чаты и авторизация остаются онлайн-данными backend.
