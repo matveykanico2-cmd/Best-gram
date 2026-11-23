@@ -15,7 +15,7 @@ for (const route of workerRoutes) if (!worker.includes(route.split('/').filter(B
   if (!worker.includes(`resource === '${resource}'`)) throw new Error(`missing worker resource: ${resource}`);
 }
 for (const hook of ['apiRequest', 'localStorage', 'WebSocket', '/api/media', 'storyMediaInput', 'reelVideoInput', '/reels', '/videos', 'loadMarketplace', 'loadEvents', 'loadGroupsAndPages', 'loadFriends', 'universalSearchTimer', '/search-history', 'listing-save', 'event-attend', 'group-join', 'page-follow', 'friend-accept', '/drafts', '/scheduled', 'renderServerChats', 'messagePollTimer', '/messages?conversation_id=', '/recommendations?limit=30', 'loadMoreFeed', 'before=']) if (!html.includes(hook)) throw new Error(`missing frontend hook: ${hook}`);
-for (const invariant of ['file.size>25*1024*1024', 'unsupported_media_type', 'deleted_at IS NULL', 'message_reaction', 'new_message', 'next_before', 'post_media', 'cover_url', 'links_json', "result_type", 'search-history']) if (!worker.includes(invariant)) throw new Error(`missing backend invariant: ${invariant}`);
+for (const invariant of ['file.size>25*1024*1024', 'unsupported_media_type', 'deleted_at IS NULL', 'message_reaction', 'new_message', 'next_before', 'post_media', 'cover_url', 'links_json', "result_type", 'search-history', "resource === 'comments'", "request.method === 'DELETE'"]) if (!worker.includes(invariant)) throw new Error(`missing backend invariant: ${invariant}`);
 
 execFileSync(process.execPath, ['--check', 'dist/server/index.js'], { stdio: 'inherit' });
 console.log('SMOKE_PASS', JSON.stringify({ workerBytes: worker.length, htmlBytes: html.length, routeCount: workerRoutes.length }));
