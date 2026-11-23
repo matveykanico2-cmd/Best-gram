@@ -30,7 +30,10 @@ export default function EditProfileModal({ isOpen, onClose }) {
 
   const handleImageChange = (e, type) => {
     const file = e.target.files[0]
+    e.target.value = ''
     if (file) {
+      if (!file.type.startsWith('image/')) return window.alert('Выберите изображение или GIF')
+      if (file.size > 6 * 1024 * 1024) return window.alert('Изображение должно быть не больше 6 МБ')
       const reader = new FileReader()
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, [type]: reader.result }))
@@ -66,14 +69,14 @@ export default function EditProfileModal({ isOpen, onClose }) {
             type="file" 
             ref={avatarInputRef} 
             className="hidden" 
-            accept="image/*"
+            accept="image/gif,image/png,image/jpeg,image/webp,image/*"
             onChange={(e) => handleImageChange(e, 'avatar')}
           />
           <input 
             type="file" 
             ref={bannerInputRef} 
             className="hidden" 
-            accept="image/*"
+            accept="image/gif,image/png,image/jpeg,image/webp,image/*"
             onChange={(e) => handleImageChange(e, 'banner')}
           />
 

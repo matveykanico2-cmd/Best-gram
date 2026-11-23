@@ -97,9 +97,12 @@ export default function TweetComposer({ parentId = null, onPostSuccess }) {
             />
             <button 
               onClick={() => fileInputRef.current.click()}
-              className="p-2 hover:bg-primary/10 rounded-full transition-colors"
+              type="button"
+              title="Добавить фото, GIF, видео или аудио"
+              className="flex items-center gap-1 rounded-full p-2 text-xs font-bold hover:bg-primary/10 transition-colors"
             >
               <Paperclip size={18} />
+              <span className="hidden sm:inline">GIF</span>
             </button>
             <button type="button" title="Добавить список" onClick={() => setContent(value => `${value}${value ? ' ' : ''}📋`)} className="p-2 hover:bg-primary/10 rounded-full transition-colors">
               <List size={18} />
