@@ -47,17 +47,6 @@ services:
     volumes:
       - nexora-redis:/data
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: nexora
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
-    volumes:
-      - nexora-minio:/data
-
 volumes:
   nexora-postgres:
   nexora-redis:
-  nexora-minio:
