@@ -11,6 +11,16 @@ npm start
 
 Открыть: `http://127.0.0.1:4173`
 
+Проверки проекта:
+
+```bash
+npm run lint
+npm run typecheck
+npm run db:migrate
+```
+
+`docker compose up -d` поднимает PostgreSQL, Redis и MinIO для следующего этапа миграции из `link.md`; текущий проверенный runtime использует локальную SQLite, чтобы запуск оставался лёгким и воспроизводимым.
+
 При первом запуске создаются:
 
 - `data/retrynet.sqlite` — постоянная база данных;
